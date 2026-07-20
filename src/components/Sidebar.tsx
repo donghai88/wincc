@@ -1,31 +1,31 @@
 'use client';
 
-import { useState } from 'react';
 import {
   LayoutDashboard,
   Monitor,
   FileBarChart,
-  Settings,
+  FileSearch,
   Bell,
   HelpCircle,
   PanelLeftClose,
   PanelLeft,
   Flame,
+  type LucideIcon,
 } from 'lucide-react';
 
 interface NavItem {
   id: string;
   name: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   badge?: number;
 }
 
 const navItems: NavItem[] = [
   { id: 'dashboard', name: '监控总览', icon: LayoutDashboard },
-  { id: 'devices', name: '设备管理', icon: Monitor },
+  { id: 'devices', name: '监控中心', icon: Monitor },
   { id: 'reports', name: '报表分析', icon: FileBarChart },
   { id: 'alarms', name: '告警中心', icon: Bell, badge: 3 },
-  { id: 'settings', name: '系统设置', icon: Settings },
+  { id: 'settings', name: '查询周报', icon: FileSearch },
   { id: 'help', name: '帮助文档', icon: HelpCircle },
 ];
 

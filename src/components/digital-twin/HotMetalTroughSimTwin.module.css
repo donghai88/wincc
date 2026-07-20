@@ -174,80 +174,21 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 108px minmax(520px, 1fr) minmax(296px, 330px);
-  grid-template-rows: minmax(0, 1fr) 170px;
+  grid-template-columns: minmax(620px, 1fr) minmax(296px, 330px);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   gap: 12px;
   padding: 14px 16px 16px;
 }
 
-.layerRail,
 .sceneDeck,
-.inspector,
-.telemetry {
+.inspector {
   border: 1px solid var(--sim-border);
   border-radius: var(--sim-radius);
   background: var(--sim-panel);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(18px);
-}
-
-.layerRail {
-  display: flex;
-  grid-row: 1 / 3;
-  min-height: 0;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-}
-
-.railTitle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--sim-soft);
-}
-
-.layerButton {
-  display: flex;
-  min-height: 78px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--sim-radius);
-  background: rgba(255, 255, 255, 0.035);
-  color: var(--sim-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 620;
-  line-height: 1.24;
-  text-align: center;
-  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
-}
-
-.layerButton svg {
-  color: currentColor;
-}
-
-.layerButton:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
-}
-
-.activeLayer {
-  border-color: color-mix(in srgb, var(--layer-color) 62%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--layer-color) 18%, transparent), rgba(255, 255, 255, 0.04));
-  color: var(--layer-color);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--layer-color) 18%, transparent), 0 0 24px color-mix(in srgb, var(--layer-color) 16%, transparent);
 }
 
 .sceneDeck {
@@ -264,62 +205,12 @@
   outline: none;
 }
 
-.sceneHud {
-  position: absolute;
-  z-index: 3;
-  top: 16px;
-  left: 16px;
-  display: grid;
-  width: min(360px, calc(100% - 32px));
-  gap: 10px;
-  pointer-events: none;
-}
-
-.sceneTitle,
-.modeBanner,
 .sceneControls,
 .legendStrip {
   border: 1px solid rgba(151, 178, 210, 0.16);
   border-radius: var(--sim-radius);
   background: rgba(3, 8, 14, 0.64);
   backdrop-filter: blur(14px);
-}
-
-.sceneTitle {
-  display: grid;
-  gap: 3px;
-  padding: 11px 12px;
-}
-
-.sceneTitle span {
-  color: var(--sim-soft);
-  font-size: 11px;
-}
-
-.sceneTitle strong {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.modeBanner {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  padding: 10px 12px;
-  color: var(--sim-muted);
-  font-size: 12px;
-}
-
-.modeBanner svg {
-  color: var(--active-color);
-}
-
-.modeBanner strong {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--active-color);
-  font-size: 13px;
 }
 
 .sceneControls {
@@ -496,6 +387,220 @@
   font-weight: 650;
 }
 
+.modbusCard {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 13px;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: var(--sim-radius);
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.12), rgba(52, 211, 153, 0.055)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.modbusCard[data-status="error"] {
+  border-color: rgba(248, 113, 113, 0.38);
+  background:
+    linear-gradient(135deg, rgba(248, 113, 113, 0.16), rgba(251, 191, 36, 0.055)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.modbusCard[data-status="retrying"] {
+  border-color: rgba(251, 191, 36, 0.4);
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(34, 211, 238, 0.055)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.modbusCard[data-status="alarm"] {
+  border-color: rgba(249, 115, 22, 0.42);
+  background:
+    linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(239, 68, 68, 0.075)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.modbusTop,
+.modbusMeta,
+.modbusValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modbusTop,
+.modbusMeta {
+  justify-content: space-between;
+}
+
+.modbusTop span {
+  color: var(--sim-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.modbusTop strong {
+  color: var(--sim-cyan);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.modbusCard[data-status="error"] .modbusTop strong {
+  color: var(--sim-red);
+}
+
+.modbusCard[data-status="retrying"] .modbusTop strong {
+  color: var(--sim-amber);
+}
+
+.modbusCard[data-status="alarm"] .modbusTop strong {
+  color: var(--sim-orange);
+}
+
+.modbusValue {
+  align-items: baseline;
+}
+
+.modbusValue strong {
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.modbusValue span {
+  color: var(--sim-muted);
+  font-size: 13px;
+}
+
+.modbusMeta {
+  color: var(--sim-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.modbusAlarmMeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  color: var(--sim-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.modbusAlarmMeta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.modbusCard p {
+  margin: 0;
+  color: rgba(251, 191, 36, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.businessAlarmCard {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 13px;
+  border: 1px solid rgba(151, 178, 210, 0.14);
+  border-radius: var(--sim-radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.businessAlarmCard[data-status="mock"],
+.businessAlarmCard[data-status="connected"],
+.businessAlarmCard[data-status="fallback"] {
+  border-color: rgba(249, 115, 22, 0.42);
+  background:
+    linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(239, 68, 68, 0.075)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.businessAlarmCard[data-status="error"] {
+  border-color: rgba(248, 113, 113, 0.42);
+  background:
+    linear-gradient(135deg, rgba(248, 113, 113, 0.16), rgba(251, 191, 36, 0.055)),
+    rgba(255, 255, 255, 0.035);
+}
+
+.businessAlarmTop,
+.businessAlarmTitle,
+.businessAlarmMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.businessAlarmTop span,
+.businessAlarmMeta {
+  color: var(--sim-soft);
+  font-size: 11px;
+}
+
+.businessAlarmTop strong {
+  color: var(--sim-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.businessAlarmCard[data-status="mock"] .businessAlarmTop strong,
+.businessAlarmCard[data-status="connected"] .businessAlarmTop strong,
+.businessAlarmCard[data-status="fallback"] .businessAlarmTop strong {
+  color: var(--sim-orange);
+}
+
+.businessAlarmCard[data-status="error"] .businessAlarmTop strong {
+  color: var(--sim-red);
+}
+
+.businessAlarmTitle strong {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 720;
+}
+
+.businessAlarmTitle span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.16);
+  color: #fed7aa;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.businessAlarmGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  color: var(--sim-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.businessAlarmGrid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.businessAlarmMeta {
+  font-family: var(--font-mono);
+}
+
+.businessAlarmCard p {
+  margin: 0;
+  color: rgba(251, 191, 36, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .qualityList {
   display: grid;
   gap: 9px;
@@ -503,7 +608,7 @@
 
 .qualityRow {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   padding: 9px 0;
@@ -512,84 +617,10 @@
   font-size: 12px;
 }
 
-.qualityRow svg {
-  color: var(--sim-cyan);
-}
-
 .qualityRow strong {
   color: #ffffff;
   font-family: var(--font-mono);
   font-weight: 650;
-}
-
-.telemetry {
-  display: grid;
-  grid-column: 2 / 4;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  min-height: 0;
-  gap: 14px;
-  padding: 13px;
-}
-
-.trendPanel,
-.eventsPanel {
-  min-width: 0;
-}
-
-.trendHeader,
-.eventsHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-  color: var(--sim-muted);
-  font-size: 12px;
-}
-
-.trendHeader strong,
-.eventsHeader strong {
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.trendBars {
-  display: grid;
-  height: 98px;
-  grid-template-columns: repeat(24, minmax(4px, 1fr));
-  align-items: end;
-  gap: 5px;
-  padding: 8px 0 0;
-}
-
-.trendBar {
-  min-height: 8px;
-  border-radius: 999px 999px 2px 2px;
-  background:
-    linear-gradient(180deg, var(--active-color), color-mix(in srgb, var(--active-color) 22%, transparent));
-  box-shadow: 0 0 18px color-mix(in srgb, var(--active-color) 20%, transparent);
-}
-
-.eventStack {
-  display: grid;
-  gap: 8px;
-}
-
-.eventRow {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 10px;
-  padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  color: var(--sim-muted);
-  font-size: 12px;
-}
-
-.eventRow time {
-  color: var(--sim-soft);
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 .sceneLoading {
@@ -625,12 +656,12 @@
   }
 
   .backButton,
-  .layerButton {
+  .sceneControls span {
     transition: none;
   }
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1080px) {
   .simShell {
     height: auto;
     min-height: calc(100vh - 56px);
@@ -638,22 +669,13 @@
   }
 
   .workspace {
-    grid-template-columns: 98px minmax(0, 1fr);
-    grid-template-rows: minmax(560px, 64vh) auto auto;
-  }
-
-  .layerRail {
-    grid-row: 1 / 4;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(560px, 64vh) auto;
   }
 
   .inspector {
-    grid-column: 2;
     display: grid;
     grid-template-columns: minmax(280px, 1.1fr) minmax(260px, 0.9fr);
-  }
-
-  .telemetry {
-    grid-column: 2;
   }
 }
 
@@ -668,32 +690,7 @@
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(500px, 62vh) auto auto;
-  }
-
-  .layerRail {
-    grid-row: auto;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-
-  .railTitle {
-    min-width: 42px;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    border-bottom: 0;
-  }
-
-  .layerButton {
-    min-width: 98px;
-  }
-
-  .inspector,
-  .telemetry {
-    grid-column: auto;
-  }
-
-  .telemetry {
-    grid-template-columns: 1fr;
+    grid-template-rows: minmax(500px, 62vh) auto;
   }
 
   .legendStrip {
@@ -722,6 +719,7 @@
   .workspace {
     gap: 10px;
     padding: 10px;
+    grid-template-rows: minmax(430px, 58vh) auto;
   }
 
   .inspector {
@@ -730,12 +728,6 @@
 
   .dataGrid {
     grid-template-columns: 1fr;
-  }
-
-  .sceneHud {
-    right: 12px;
-    left: 12px;
-    width: auto;
   }
 
   .legendStrip,

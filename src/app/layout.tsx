@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { AntdRegistry } from "@ant-design/nextjs-registry";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -22,7 +23,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.className} antialiased`}>
       <body className="min-h-screen bg-black text-white">
-        <AuthProvider>{children}</AuthProvider>
+        <AntdRegistry>
+          <AuthProvider>{children}</AuthProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

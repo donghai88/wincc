@@ -12,6 +12,7 @@ import {
   Network,
   Clock,
   Tag,
+  type LucideIcon,
 } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
 import { getDeviceTypeConfig, getTemplateByWinCC } from '@/data/wincc-config';
@@ -21,7 +22,7 @@ interface WinCCHeaderProps {
 }
 
 // 图标映射
-const iconMap: Record<string, React.ElementType> = {
+const iconMap: Record<string, LucideIcon> = {
   atom: Atom,
   snowflake: Snowflake,
   zap: Zap,

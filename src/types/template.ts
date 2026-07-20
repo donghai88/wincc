@@ -118,3 +118,61 @@ export interface AlarmInfo {
   time: string;
   acknowledged: boolean;
 }
+
+export type AlarmPageLevel = '1' | '2';
+export type AlarmReadState = 0 | 1;
+
+export interface ApiSuccessResponse<T> {
+  msg: '操作成功';
+  code: 200;
+  data: T;
+}
+
+export interface AlarmPageRecord {
+  id: number;
+  eventId: string;
+  alarmId: string;
+  eventTimeStamp: string;
+  devId: string;
+  channelName: string;
+  num: number;
+  ruleType: string;
+  level: AlarmPageLevel;
+  avgTemp: number;
+  minTemp: number;
+  maxTemp: number;
+  thresholdTemp: number;
+  locationName: string;
+  isRead: AlarmReadState;
+  processor: string | null;
+  processContent: string | null;
+  processTime: string | null;
+}
+
+export interface AlarmPageQuery {
+  pageNum: number;
+  pageSize: number;
+  locationName?: string;
+  level?: AlarmPageLevel;
+  isRead?: AlarmReadState;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface AlarmPageData {
+  total: number;
+  list: AlarmPageRecord[];
+}
+
+export interface AlarmLocationStat {
+  locationName: string;
+  alarmCount: number;
+  unreadCount: number;
+  maxTemp: number;
+  minTemp: number;
+}
+
+export interface AlarmLocationStatQuery {
+  startTime?: string;
+  endTime?: string;
+}

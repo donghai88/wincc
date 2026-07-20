@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Flame, User, Lock, Eye, EyeOff, AlertCircle, CheckCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,7 +12,7 @@ const mockUsers = [
   { username: 'viewer', password: 'view123', name: '观察员', role: 'viewer' as const },
 ];
 
-export default function LoginPage() {
+function LoginContent() {
   const { login } = useAuth();
   const searchParams = useSearchParams();
   const [username, setUsername] = useState('admin');
@@ -391,5 +391,30 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--background)',
+        color: 'var(--text-tertiary)',
+      }}
+    >
+      加载中...
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 }

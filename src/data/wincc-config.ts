@@ -1,51 +1,51 @@
 // WinCC 系统配置数据 - 钢铁冶金行业
-import type { WinCCInstance, DeviceTypeConfig, TemplateConfig, DeviceType, LadleMetrics, IronLevelMetrics, AlarmInfo, HotMetalTroughMetrics } from '@/types/template';
+import type { WinCCInstance, DeviceTypeConfig, TemplateConfig, DeviceType, LadleMetrics, IronLevelMetrics, AlarmInfo, HotMetalTroughMetrics, AlarmPageData, AlarmPageQuery, AlarmPageRecord, AlarmLocationStat, AlarmLocationStatQuery, ApiSuccessResponse } from '@/types/template';
 
 // 设备类型配置
 export const deviceTypes: DeviceTypeConfig[] = [
-  {
-    id: 'ladle',
-    name: '液位监测',
-    description: '铁水液位AI视觉检测系统',
-    icon: 'container',
-    color: '#f59e0b',
-    templateId: 'ladle-monitor',
-  },
-  {
-    id: 'converter',
-    name: '转炉',
-    description: '转炉炼钢监控系统',
-    icon: 'flame',
-    color: '#ef4444',
-    templateId: 'converter-monitor',
-  },
-  {
-    id: 'continuous-cast',
-    name: '连铸机',
-    description: '连续铸造监控系统',
-    icon: 'git-branch',
-    color: '#3b82f6',
-    templateId: 'cast-monitor',
-  },
-  {
-    id: 'heating-furnace',
-    name: '加热炉',
-    description: '钢坯加热监控系统',
-    icon: 'thermometer',
-    color: '#f97316',
-    templateId: 'furnace-monitor',
-  },
-  {
-    id: 'hot-metal-trough',
-    name: '铁水沟',
-    description: '铁水沟通道数字孪生监控',
-    icon: 'waves',
-    color: '#8b5cf6',
-    templateId: 'trough-monitor',
-  },
+  // {
+  //   id: 'ladle',
+  //   name: '液位监测',
+  //   description: '铁水液位AI视觉检测系统',
+  //   icon: 'container',
+  //   color: '#f59e0b',
+  //   templateId: 'ladle-monitor',
+  // },
+  // {
+  //   id: 'converter',
+  //   name: '转炉',
+  //   description: '转炉炼钢监控系统',
+  //   icon: 'flame',
+  //   color: '#ef4444',
+  //   templateId: 'converter-monitor',
+  // },
+  // {
+  //   id: 'continuous-cast',
+  //   name: '连铸机',
+  //   description: '连续铸造监控系统',
+  //   icon: 'git-branch',
+  //   color: '#3b82f6',
+  //   templateId: 'cast-monitor',
+  // },
+  // {
+  //   id: 'heating-furnace',
+  //   name: '加热炉',
+  //   description: '钢坯加热监控系统',
+  //   icon: 'thermometer',
+  //   color: '#f97316',
+  //   templateId: 'furnace-monitor',
+  // },
+  // {
+  //   id: 'hot-metal-trough',
+  //   name: '铁水沟',
+  //   description: '铁水沟通道数字孪生监控',
+  //   icon: 'waves',
+  //   color: '#8b5cf6',
+  //   templateId: 'trough-monitor',
+  // },
   {
     id: 'hot-metal-trough-sim',
-    name: '铁水沟一',
+    name: '铁水沟',
     description: '铁水沟视觉仿真数字孪生',
     icon: 'waves',
     color: '#06b6d4',
@@ -205,7 +205,7 @@ export const winccInstances: WinCCInstance[] = [
   {
     id: 'trough-001',
     name: '1号铁水沟',
-    location: '高炉车间 - 出铁区',
+    location: '高炉车间 - 铁水沟',
     deviceType: 'hot-metal-trough',
     status: 'online',
     lastUpdate: '2024-01-15 14:30:08',
@@ -214,7 +214,7 @@ export const winccInstances: WinCCInstance[] = [
   },
   {
     id: 'trough-sim-001',
-    name: '铁水沟一',
+    name: '铁水沟',
     location: '高炉车间 - 出铁区',
     deviceType: 'hot-metal-trough-sim',
     status: 'online',
@@ -331,6 +331,143 @@ export function getAlarms(instanceId: string): AlarmInfo[] {
   };
 
   return alarmsMap[instanceId] || [];
+}
+
+export const documentAlarmPageRecords: AlarmPageRecord[] = [
+  {
+    id: 3,
+    eventId: '2069940622583791701',
+    alarmId: '2069940622583791701',
+    eventTimeStamp: '2026-06-30 08:27:56',
+    devId: '2065240851560869980',
+    channelName: '11_1',
+    num: 2,
+    ruleType: '高温大于',
+    level: '1',
+    avgTemp: 28.9,
+    minTemp: 27.7,
+    maxTemp: 44.1,
+    thresholdTemp: 40.0,
+    locationName: '位置3',
+    isRead: 1,
+    processor: '张三',
+    processContent: '已现场排查，恢复正常',
+    processTime: '2026-07-01 06:03:24',
+  },
+];
+
+const createSuccessResponse = <T,>(data: T): ApiSuccessResponse<T> => ({
+  msg: '操作成功',
+  code: 200,
+  data,
+});
+
+export const documentAlarmLocationStats: AlarmLocationStat[] = [
+  {
+    locationName: '位置3',
+    alarmCount: 1,
+    unreadCount: 0,
+    maxTemp: 44.1,
+    minTemp: 27.7,
+  },
+  {
+    locationName: '位置1',
+    alarmCount: 1,
+    unreadCount: 0,
+    maxTemp: 54.1,
+    minTemp: 37.7,
+  },
+];
+
+export const alarmPageLocationNames = ['位置1', '位置3'];
+
+// The sheet's sample request filters 位置1, while the sample row itself is 位置3.
+// Keep this exact request mapped to the documented response instead of inventing a correction.
+const documentAlarmPageExampleQuery: Required<AlarmPageQuery> = {
+  pageNum: 1,
+  pageSize: 10,
+  locationName: '位置1',
+  isRead: 1,
+  level: '1',
+  startTime: '2026-06-25 08:26:56',
+  endTime: '2026-06-30 08:27:56',
+};
+
+const matchesDocumentAlarmPageExample = (query: AlarmPageQuery) => {
+  return (
+    query.pageNum === documentAlarmPageExampleQuery.pageNum &&
+    query.pageSize === documentAlarmPageExampleQuery.pageSize &&
+    query.locationName === documentAlarmPageExampleQuery.locationName &&
+    query.isRead === documentAlarmPageExampleQuery.isRead &&
+    query.level === documentAlarmPageExampleQuery.level &&
+    query.startTime === documentAlarmPageExampleQuery.startTime &&
+    query.endTime === documentAlarmPageExampleQuery.endTime
+  );
+};
+
+export function queryAlarmPage(query: AlarmPageQuery): AlarmPageData {
+  if (matchesDocumentAlarmPageExample(query)) {
+    return {
+      total: 1,
+      list: documentAlarmPageRecords.map((record) => ({ ...record })),
+    };
+  }
+
+  const filtered = documentAlarmPageRecords.filter((record) => {
+    if (query.locationName && record.locationName !== query.locationName) return false;
+    if (query.level && record.level !== query.level) return false;
+    if (query.isRead !== undefined && record.isRead !== query.isRead) return false;
+    if (query.startTime && record.eventTimeStamp < query.startTime) return false;
+    if (query.endTime && record.eventTimeStamp > query.endTime) return false;
+    return true;
+  });
+
+  const pageSize = Math.max(1, query.pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageNum = Math.min(Math.max(1, query.pageNum), totalPages);
+  const start = (pageNum - 1) * pageSize;
+
+  return {
+    total: filtered.length,
+    list: filtered.slice(start, start + pageSize),
+  };
+}
+
+export function queryAlarmPageApi(query: AlarmPageQuery): ApiSuccessResponse<AlarmPageData> {
+  return createSuccessResponse(queryAlarmPage(query));
+}
+
+export function buildAlarmPageApiPath(query: AlarmPageQuery) {
+  const params = new URLSearchParams({
+    pageNum: String(query.pageNum),
+    pageSize: String(query.pageSize),
+  });
+
+  if (query.locationName) params.set('locationName', query.locationName);
+  if (query.isRead !== undefined) params.set('isRead', String(query.isRead));
+  if (query.level) params.set('level', query.level);
+  if (query.startTime) params.set('startTime', query.startTime);
+  if (query.endTime) params.set('endTime', query.endTime);
+
+  return `/alarm/page?${params.toString()}`;
+}
+
+export function queryAlarmStatsByLocation(query: AlarmLocationStatQuery): AlarmLocationStat[] {
+  void query;
+  return documentAlarmLocationStats.map((stat) => ({ ...stat }));
+}
+
+export function queryAlarmStatsByLocationApi(query: AlarmLocationStatQuery): ApiSuccessResponse<AlarmLocationStat[]> {
+  return createSuccessResponse(queryAlarmStatsByLocation(query));
+}
+
+export function buildAlarmLocationStatApiPath(query: AlarmLocationStatQuery) {
+  const params = new URLSearchParams();
+
+  if (query.startTime) params.set('startTime', query.startTime);
+  if (query.endTime) params.set('endTime', query.endTime);
+
+  return `/alarm/stat-by-location?${params.toString()}`;
 }
 
 // 模拟铁水液位检测数据 - 每个出铁场有2个出铁口

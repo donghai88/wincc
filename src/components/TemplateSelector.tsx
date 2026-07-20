@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutGrid, Factory, Cpu, Gauge, Waves, Zap } from 'lucide-react';
+import { LayoutGrid, Factory, Cpu, Gauge, Waves, Zap, type LucideIcon } from 'lucide-react';
 import type { TemplateConfig } from '@/types/template';
 
 interface TemplateSelectorProps {
@@ -9,7 +9,7 @@ interface TemplateSelectorProps {
   onSelect: (id: string) => void;
 }
 
-const iconMap: Record<string, React.ElementType> = {
+const iconMap: Record<string, LucideIcon> = {
   'layout-grid': LayoutGrid,
   'factory': Factory,
   'cpu': Cpu,

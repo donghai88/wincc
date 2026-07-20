@@ -300,6 +300,215 @@
   gap: 12px;
 }
 
+.livePointCard {
+  padding: 15px;
+  border: 1px solid rgba(76, 201, 240, 0.22);
+  border-radius: var(--twin-radius);
+  background:
+    linear-gradient(145deg, rgba(76, 201, 240, 0.12), rgba(69, 212, 131, 0.05)),
+    var(--twin-panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+.livePointCard[data-status="error"] {
+  border-color: rgba(255, 92, 87, 0.38);
+  background:
+    linear-gradient(145deg, rgba(255, 92, 87, 0.16), rgba(245, 159, 56, 0.055)),
+    var(--twin-panel);
+}
+
+.livePointCard[data-status="retrying"] {
+  border-color: rgba(245, 159, 56, 0.4);
+  background:
+    linear-gradient(145deg, rgba(245, 159, 56, 0.14), rgba(76, 201, 240, 0.055)),
+    var(--twin-panel);
+}
+
+.livePointCard[data-status="alarm"] {
+  border-color: rgba(245, 159, 56, 0.42);
+  background:
+    linear-gradient(145deg, rgba(245, 159, 56, 0.16), rgba(255, 92, 87, 0.075)),
+    var(--twin-panel);
+}
+
+.livePointHeader,
+.livePointMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.livePointHeader span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.livePointHeader strong {
+  color: var(--twin-blue);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.livePointCard[data-status="error"] .livePointHeader strong {
+  color: var(--twin-red);
+}
+
+.livePointCard[data-status="retrying"] .livePointHeader strong {
+  color: var(--twin-amber);
+}
+
+.livePointCard[data-status="alarm"] .livePointHeader strong {
+  color: var(--twin-amber);
+}
+
+.livePointValue {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.livePointValue span {
+  margin-right: auto;
+  color: var(--twin-muted);
+  font-size: 12px;
+}
+
+.livePointValue strong {
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.livePointValue em {
+  color: var(--twin-muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.livePointMeta {
+  margin-top: 10px;
+  color: var(--twin-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.livePointAlarmMeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--twin-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.livePointAlarmMeta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.livePointMessage {
+  margin: 10px 0 0;
+  color: rgba(245, 159, 56, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.businessAlarmCard {
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--twin-radius);
+  background: var(--twin-panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+.businessAlarmCard[data-status="mock"],
+.businessAlarmCard[data-status="connected"],
+.businessAlarmCard[data-status="fallback"] {
+  border-color: rgba(245, 159, 56, 0.42);
+  background:
+    linear-gradient(145deg, rgba(245, 159, 56, 0.16), rgba(255, 92, 87, 0.075)),
+    var(--twin-panel);
+}
+
+.businessAlarmCard[data-status="error"] {
+  border-color: rgba(255, 92, 87, 0.42);
+  background:
+    linear-gradient(145deg, rgba(255, 92, 87, 0.16), rgba(245, 159, 56, 0.055)),
+    var(--twin-panel);
+}
+
+.businessAlarmHeader,
+.businessAlarmMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.businessAlarmHeader span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.businessAlarmHeader strong {
+  color: var(--twin-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.businessAlarmCard[data-status="mock"] .businessAlarmHeader strong,
+.businessAlarmCard[data-status="connected"] .businessAlarmHeader strong,
+.businessAlarmCard[data-status="fallback"] .businessAlarmHeader strong {
+  color: var(--twin-amber);
+}
+
+.businessAlarmCard[data-status="error"] .businessAlarmHeader strong {
+  color: var(--twin-red);
+}
+
+.businessAlarmValue {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.businessAlarmValue span {
+  margin-right: auto;
+  color: var(--twin-muted);
+  font-size: 12px;
+}
+
+.businessAlarmValue strong {
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.businessAlarmValue em {
+  color: var(--twin-muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.businessAlarmMeta {
+  margin-top: 10px;
+  color: var(--twin-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .metricCard {
   padding: 15px;
   overflow: hidden;

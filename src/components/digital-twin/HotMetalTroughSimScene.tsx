@@ -2,12 +2,14 @@
 
 import { Suspense, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Grid, Html, Line, OrbitControls, useFBX } from '@react-three/drei';
+import { ContactShadows, Grid, Html, Line, OrbitControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { SimulationLayer } from './HotMetalTroughSimTwin';
+import type { DigitalTwinBusinessAlarm, DigitalTwinTemperaturePoint, ModbusFeedStatus } from '@/types/digital-twin';
 
-const MODEL_PATH = '/cad/gaolu.fbx';
+const MODEL_PATH = '/cad/langan.glb';
 const NORMALIZED_SPAN = 13.8;
+const MODBUS_SENSOR_POSITION: [number, number, number] = [3.29, 2.86, -1.2];
 
 const flowCurve = new THREE.CatmullRomCurve3([
   new THREE.Vector3(-1.75, 0.72, 0.08),
@@ -17,8 +19,213 @@ const flowCurve = new THREE.CatmullRomCurve3([
   new THREE.Vector3(3.1, 0.66, 0.02),
 ]);
 
-interface HotMetalTroughSimSceneProps {
+export interface HotMetalTroughSimSceneProps {
   activeLayer: SimulationLayer;
+  temperaturePoint?: DigitalTwinTemperaturePoint | null;
+  feedStatus?: ModbusFeedStatus;
+  businessAlarm?: DigitalTwinBusinessAlarm | null;
+}
+
+type IndustrialMaterialKey =
+  | 'terrain'
+  | 'furnaceShell'
+  | 'furnaceCap'
+  | 'deckPlate'
+  | 'paintedSteel'
+  | 'galvanizedRail'
+  | 'coolingPipe'
+  | 'hotPipe'
+  | 'concrete'
+  | 'equipment'
+  | 'refractory'
+  | 'smallDetail';
+
+interface MeshProfile {
+  center: THREE.Vector3;
+  size: THREE.Vector3;
+  longest: number;
+  middle: number;
+  shortest: number;
+  longAxis: 'x' | 'y' | 'z';
+  flatAxis: 'x' | 'y' | 'z';
+  volume: number;
+  prefix: string;
+}
+
+function makeIndustrialMaterial({
+  color,
+  metalness,
+  roughness,
+  emissive = '#000000',
+  emissiveIntensity = 0,
+}: {
+  color: string;
+  metalness: number;
+  roughness: number;
+  emissive?: string;
+  emissiveIntensity?: number;
+}) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    metalness,
+    roughness,
+    emissive,
+    emissiveIntensity,
+  });
+}
+
+function createIndustrialMaterials() {
+  return {
+    terrain: makeIndustrialMaterial({
+      color: '#27323a',
+      metalness: 0.08,
+      roughness: 0.86,
+      emissive: '#06080a',
+      emissiveIntensity: 0.12,
+    }),
+    furnaceShell: makeIndustrialMaterial({
+      color: '#4b5560',
+      metalness: 0.72,
+      roughness: 0.34,
+      emissive: '#15191c',
+      emissiveIntensity: 0.12,
+    }),
+    furnaceCap: makeIndustrialMaterial({
+      color: '#7b8790',
+      metalness: 0.68,
+      roughness: 0.3,
+      emissive: '#202a2f',
+      emissiveIntensity: 0.08,
+    }),
+    deckPlate: makeIndustrialMaterial({
+      color: '#38414a',
+      metalness: 0.58,
+      roughness: 0.56,
+      emissive: '#070b0f',
+      emissiveIntensity: 0.08,
+    }),
+    paintedSteel: makeIndustrialMaterial({
+      color: '#2f4652',
+      metalness: 0.5,
+      roughness: 0.42,
+      emissive: '#07151a',
+      emissiveIntensity: 0.08,
+    }),
+    galvanizedRail: makeIndustrialMaterial({
+      color: '#9aa7ae',
+      metalness: 0.72,
+      roughness: 0.28,
+      emissive: '#111820',
+      emissiveIntensity: 0.05,
+    }),
+    coolingPipe: makeIndustrialMaterial({
+      color: '#6fa2b7',
+      metalness: 0.62,
+      roughness: 0.32,
+      emissive: '#0a2630',
+      emissiveIntensity: 0.12,
+    }),
+    hotPipe: makeIndustrialMaterial({
+      color: '#7a5543',
+      metalness: 0.46,
+      roughness: 0.5,
+      emissive: '#35140b',
+      emissiveIntensity: 0.2,
+    }),
+    concrete: makeIndustrialMaterial({
+      color: '#5d6468',
+      metalness: 0.04,
+      roughness: 0.92,
+    }),
+    equipment: makeIndustrialMaterial({
+      color: '#56646d',
+      metalness: 0.42,
+      roughness: 0.48,
+      emissive: '#0e171d',
+      emissiveIntensity: 0.08,
+    }),
+    refractory: makeIndustrialMaterial({
+      color: '#6b4a3a',
+      metalness: 0.1,
+      roughness: 0.78,
+      emissive: '#3b160b',
+      emissiveIntensity: 0.22,
+    }),
+    smallDetail: makeIndustrialMaterial({
+      color: '#b2c1c7',
+      metalness: 0.72,
+      roughness: 0.26,
+      emissive: '#121c22',
+      emissiveIntensity: 0.05,
+    }),
+  } satisfies Record<IndustrialMaterialKey, THREE.MeshStandardMaterial>;
+}
+
+function getMeshProfile(mesh: THREE.Mesh): MeshProfile {
+  const bounds = new THREE.Box3().setFromObject(mesh);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bounds.getSize(size);
+  bounds.getCenter(center);
+
+  const axes = [
+    { axis: 'x' as const, value: size.x },
+    { axis: 'y' as const, value: size.y },
+    { axis: 'z' as const, value: size.z },
+  ].sort((a, b) => b.value - a.value);
+  const prefix = mesh.name.match(/^[A-Za-z]+/)?.[0] ?? 'mesh';
+
+  return {
+    center,
+    size,
+    longest: axes[0].value,
+    middle: axes[1].value,
+    shortest: axes[2].value,
+    longAxis: axes[0].axis,
+    flatAxis: axes[2].axis,
+    volume: size.x * size.y * size.z,
+    prefix,
+  };
+}
+
+function classifyMesh(profile: MeshProfile): IndustrialMaterialKey {
+  const isVeryFlat = profile.middle / Math.max(profile.shortest, 0.001) > 8 && profile.shortest < 0.08;
+  const isSlender = profile.longest / Math.max(profile.middle, 0.001) > 7 && profile.middle < 0.16;
+  const isTiny = profile.longest < 0.08;
+
+  if (profile.prefix === 'pPlane' || profile.longest > 11) return 'terrain';
+  if (profile.prefix === 'LT' || profile.volume > 11) return 'furnaceShell';
+  if (profile.prefix === 'pTorus') return profile.center.y > 1.35 ? 'furnaceCap' : 'galvanizedRail';
+
+  if (profile.prefix === 'polySurface') {
+    if (isVeryFlat && profile.flatAxis === 'y') return 'deckPlate';
+    if (isVeryFlat && profile.center.y > 0.9) return 'furnaceCap';
+    if (profile.center.y < 0.35 && profile.volume > 0.05) return 'refractory';
+    return profile.volume > 0.28 ? 'furnaceShell' : 'equipment';
+  }
+
+  if (profile.prefix === 'pCylinder') {
+    if (isTiny) return 'smallDetail';
+    if (isSlender && profile.longAxis === 'y') return 'paintedSteel';
+    if (isSlender) return profile.center.y < 0.45 ? 'hotPipe' : 'coolingPipe';
+    if (profile.center.y < 0.35 && profile.volume > 0.02) return 'refractory';
+    return profile.volume > 0.1 ? 'equipment' : 'galvanizedRail';
+  }
+
+  if (profile.prefix === 'pCube') {
+    if (isVeryFlat && profile.flatAxis === 'y') return 'deckPlate';
+    if (isSlender) return profile.longAxis === 'y' ? 'paintedSteel' : 'galvanizedRail';
+    if (profile.center.y < 0.3 && profile.volume > 0.03) return 'concrete';
+    return profile.volume > 0.24 ? 'equipment' : 'paintedSteel';
+  }
+
+  return isTiny ? 'smallDetail' : 'equipment';
+}
+
+function shouldShowCadEdge(profile: MeshProfile, materialKey: IndustrialMaterialKey) {
+  if (materialKey === 'terrain' || materialKey === 'concrete' || materialKey === 'refractory') return false;
+  if (materialKey === 'deckPlate' && profile.longest > 2.4) return false;
+  return profile.longest < 2.8 || materialKey === 'galvanizedRail' || materialKey === 'coolingPipe';
 }
 
 function normalizeModel(scene: THREE.Group) {
@@ -28,61 +235,31 @@ function normalizeModel(scene: THREE.Group) {
   const center = new THREE.Vector3();
   box.getSize(size);
   box.getCenter(center);
-  const scale = NORMALIZED_SPAN / Math.max(size.x, size.z, 1);
+  const scale = NORMALIZED_SPAN / Math.max(size.x, size.z, 0.001);
 
   root.scale.setScalar(scale);
   root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+  root.updateMatrixWorld(true);
 
-  const baseMaterial = new THREE.MeshStandardMaterial({
-    color: '#6f88a2',
-    metalness: 0.52,
-    roughness: 0.3,
-    transparent: true,
-    opacity: 0.72,
-    emissive: '#0b2032',
-    emissiveIntensity: 0.34,
-  });
-
-  const highlightMaterial = new THREE.MeshStandardMaterial({
-    color: '#9fb7cd',
-    metalness: 0.62,
-    roughness: 0.24,
-    transparent: true,
-    opacity: 0.8,
-    emissive: '#123b55',
-    emissiveIntensity: 0.46,
-  });
-
-  const deepMaterial = new THREE.MeshStandardMaterial({
-    color: '#33475c',
-    metalness: 0.44,
-    roughness: 0.42,
-    transparent: true,
-    opacity: 0.66,
-    emissive: '#061522',
-    emissiveIntensity: 0.22,
-  });
-
+  const materials = createIndustrialMaterials();
   const edgeMaterial = new THREE.LineBasicMaterial({
-    color: '#9bd7ff',
+    color: '#c8e6f4',
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.16,
     depthWrite: false,
   });
 
-  let meshIndex = 0;
   root.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
       const mesh = child as THREE.Mesh;
+      const profile = getMeshProfile(mesh);
+      const materialKey = classifyMesh(profile);
+
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.material = meshIndex % 7 === 0
-        ? highlightMaterial.clone()
-        : meshIndex % 4 === 0
-          ? deepMaterial.clone()
-          : baseMaterial.clone();
+      mesh.material = materials[materialKey];
 
-      if (mesh.geometry && meshIndex % 2 === 0) {
+      if (mesh.geometry && shouldShowCadEdge(profile, materialKey)) {
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(mesh.geometry, 24),
           edgeMaterial.clone()
@@ -90,8 +267,6 @@ function normalizeModel(scene: THREE.Group) {
         edges.renderOrder = 2;
         mesh.add(edges);
       }
-
-      meshIndex += 1;
     }
   });
 
@@ -99,7 +274,7 @@ function normalizeModel(scene: THREE.Group) {
 }
 
 function CadModel() {
-  const scene = useFBX(MODEL_PATH);
+  const { scene } = useGLTF(MODEL_PATH);
   const normalized = useMemo(() => normalizeModel(scene), [scene]);
   return <primitive object={normalized} />;
 }
@@ -138,6 +313,110 @@ function Label({
   );
 }
 
+const modbusStatusLabel: Record<ModbusFeedStatus, string> = {
+  mock: 'Mock 推送',
+  connecting: 'WS 连接中',
+  connected: 'WS 实时',
+  fallback: 'WS 回退 Mock',
+  error: 'WS 异常',
+  retrying: '重连中',
+};
+
+const modbusStatusColor: Record<ModbusFeedStatus, string> = {
+  mock: '#22d3ee',
+  connecting: '#94a3b8',
+  connected: '#34d399',
+  fallback: '#fbbf24',
+  error: '#f87171',
+  retrying: '#fbbf24',
+};
+
+function ModbusTemperatureMarker({
+  point,
+  status,
+  alarm,
+}: {
+  point: DigitalTwinTemperaturePoint | null;
+  status: ModbusFeedStatus;
+  alarm: DigitalTwinBusinessAlarm | null;
+}) {
+  const pulseRef = useRef<THREE.Mesh>(null);
+  const isDisconnected = status === 'error';
+  const isRetrying = status === 'retrying';
+  const isConnectionIssue = isDisconnected || isRetrying;
+  const isAlarm = Boolean(alarm) && !isConnectionIssue;
+  const color = isDisconnected ? modbusStatusColor.error : isRetrying ? modbusStatusColor.retrying : isAlarm ? '#f97316' : modbusStatusColor[status];
+
+  useFrame(({ clock }) => {
+    if (!pulseRef.current) return;
+    const scale = 1 + Math.sin(clock.elapsedTime * 3.2) * 0.18;
+    pulseRef.current.scale.setScalar(scale);
+  });
+
+  if (!point) return null;
+
+  const value = isAlarm && alarm ? alarm.maxTemp : point.temperature;
+  const statusText = isDisconnected
+    ? '连接中断'
+    : isRetrying
+      ? '重连中'
+      : isAlarm && alarm
+        ? `高温报警 · ${alarm.level}级`
+        : modbusStatusLabel[status];
+  const detailText = isDisconnected
+    ? 'WS /ws/modbus 连接中断'
+    : isRetrying
+      ? 'WS /ws/modbus 正在重连'
+      : isAlarm && alarm
+        ? `阈值 ${alarm.thresholdTemp.toFixed(1)} °C · ${alarm.ruleType}`
+        : modbusStatusLabel[status];
+
+  return (
+    <group position={MODBUS_SENSOR_POSITION}>
+      <mesh position={[0, 0.28, 0]}>
+        <cylinderGeometry args={[0.018, 0.018, 0.56, 14]} />
+        <meshBasicMaterial color={color} transparent opacity={0.72} />
+      </mesh>
+      <mesh>
+        <sphereGeometry args={[0.1, 24, 16]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.9} roughness={0.34} metalness={0.12} />
+      </mesh>
+      <mesh ref={pulseRef} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.28, 0.01, 8, 72]} />
+        <meshBasicMaterial color={color} transparent opacity={0.66} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </mesh>
+      <pointLight color={color} intensity={2.2} distance={3.2} />
+      <Html position={[0, 0.78, 0]} center distanceFactor={9.2} style={{ pointerEvents: 'none' }}>
+        <div
+          style={{
+            minWidth: 142,
+            padding: '8px 10px',
+            border: `1px solid ${color}66`,
+            borderRadius: 8,
+            background: 'rgba(4, 10, 18, 0.78)',
+            boxShadow: `0 0 26px ${color}22`,
+            color: 'rgba(245,250,255,0.92)',
+            fontSize: 11,
+            lineHeight: 1.35,
+            transform: 'translateX(-92px)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          <div style={{ color: 'rgba(214,232,248,0.62)' }}>
+            {point.locationName} · {point.locationId}
+          </div>
+          <strong style={{ display: 'block', marginTop: 2, color, fontFamily: 'monospace', fontSize: 18, fontWeight: 700 }}>
+            {statusText} {value.toFixed(1)} °C
+          </strong>
+          <div style={{ marginTop: 2, color: 'rgba(214,232,248,0.62)' }}>
+            {detailText} · {isDisconnected ? point.receivedAt : alarm?.receivedAt ?? point.receivedAt}
+          </div>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 function SceneLoader() {
   return (
     <Html center>
@@ -152,7 +431,7 @@ function SceneLoader() {
           backdropFilter: 'blur(10px)',
         }}
       >
-        加载 FBX 模型与仿真覆盖层...
+        加载 GLB 模型与仿真覆盖层...
       </div>
     </Html>
   );
@@ -405,9 +684,14 @@ function SimulationOverlays({ activeLayer }: HotMetalTroughSimSceneProps) {
   );
 }
 
-useFBX.preload(MODEL_PATH);
+useGLTF.preload(MODEL_PATH);
 
-export default function HotMetalTroughSimScene({ activeLayer }: HotMetalTroughSimSceneProps) {
+export default function HotMetalTroughSimScene({
+  activeLayer,
+  temperaturePoint = null,
+  feedStatus = 'mock',
+  businessAlarm = null,
+}: HotMetalTroughSimSceneProps) {
   return (
     <Canvas
       camera={{ position: [8.8, 5.4, 8.2], fov: 42, near: 0.1, far: 120 }}
@@ -436,6 +720,7 @@ export default function HotMetalTroughSimScene({ activeLayer }: HotMetalTroughSi
         <group>
           <CadModel />
           <SimulationOverlays activeLayer={activeLayer} />
+          <ModbusTemperatureMarker point={temperaturePoint} status={feedStatus} alarm={businessAlarm} />
           <Grid
             position={[0, -0.02, 0]}
             args={[18, 18]}
@@ -449,17 +734,41 @@ export default function HotMetalTroughSimScene({ activeLayer }: HotMetalTroughSi
             fadeStrength={1.35}
             infiniteGrid={false}
           />
+          <ContactShadows
+            position={[0, -0.01, 0]}
+            opacity={0.42}
+            scale={16}
+            blur={2.7}
+            far={4.8}
+            color="#02070c"
+          />
         </group>
       </Suspense>
 
       <OrbitControls
         makeDefault
+        enablePan
+        enableRotate
+        enableZoom
         enableDamping
         dampingFactor={0.07}
-        minDistance={5}
-        maxDistance={34}
-        maxPolarAngle={Math.PI * 0.48}
-        minPolarAngle={Math.PI * 0.16}
+        panSpeed={1.15}
+        rotateSpeed={0.72}
+        zoomSpeed={0.78}
+        screenSpacePanning
+        mouseButtons={{
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN,
+        }}
+        minDistance={2.6}
+        maxDistance={46}
+        maxPolarAngle={Math.PI * 0.54}
+        minPolarAngle={Math.PI * 0.1}
         target={[0.1, 0.78, -0.08]}
       />
     </Canvas>
