@@ -7,6 +7,7 @@ import {
   Thermometer,
   Cog,
   Waves,
+  ScanText,
   Circle,
   AlertTriangle,
   CheckCircle2,
@@ -28,6 +29,7 @@ const iconMap: Record<string, LucideIcon> = {
   thermometer: Thermometer,
   cog: Cog,
   waves: Waves,
+  'scan-text': ScanText,
 };
 
 export default function DeviceTypeOverview({ onSelectDeviceType }: DeviceTypeOverviewProps) {

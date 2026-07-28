@@ -9,7 +9,6 @@ import type { DigitalTwinBusinessAlarm, DigitalTwinTemperaturePoint, ModbusFeedS
 
 const MODEL_PATH = '/cad/langan.glb';
 const NORMALIZED_SPAN = 13.8;
-const MODBUS_SENSOR_POSITION: [number, number, number] = [3.29, 2.86, -1.2];
 
 const flowCurve = new THREE.CatmullRomCurve3([
   new THREE.Vector3(-1.75, 0.72, 0.08),
@@ -273,10 +272,10 @@ function normalizeModel(scene: THREE.Group) {
   return root;
 }
 
-function CadModel() {
+function CadModel({ modelRef }: { modelRef: React.RefObject<THREE.Group | null> }) {
   const { scene } = useGLTF(MODEL_PATH);
   const normalized = useMemo(() => normalizeModel(scene), [scene]);
-  return <primitive object={normalized} />;
+  return <primitive ref={modelRef} object={normalized} />;
 }
 
 function Label({
@@ -313,15 +312,6 @@ function Label({
   );
 }
 
-const modbusStatusLabel: Record<ModbusFeedStatus, string> = {
-  mock: 'Mock 推送',
-  connecting: 'WS 连接中',
-  connected: 'WS 实时',
-  fallback: 'WS 回退 Mock',
-  error: 'WS 异常',
-  retrying: '重连中',
-};
-
 const modbusStatusColor: Record<ModbusFeedStatus, string> = {
   mock: '#22d3ee',
   connecting: '#94a3b8',
@@ -331,88 +321,170 @@ const modbusStatusColor: Record<ModbusFeedStatus, string> = {
   retrying: '#fbbf24',
 };
 
-function ModbusTemperatureMarker({
+interface SurfaceMonitorPoint {
+  id: string;
+  name: string;
+  anchor: [number, number];
+  rayOrigin?: [number, number, number];
+  rayDirection?: [number, number, number];
+  temperature: number;
+  radius: number;
+}
+
+const SURFACE_MONITOR_POINTS: SurfaceMonitorPoint[] = [
+  // Every row shares the same layout: outer sensors bind to the side walls,
+  // while the two middle sensors use the one-third and two-third positions.
+  { id: 'loc_13', name: 'T13', anchor: [-3.42, 4.95], rayOrigin: [-8, 1.05, 4.95], rayDirection: [1, 0, 0], temperature: 56.8, radius: 0.12 },
+  { id: 'loc_14', name: 'T14', anchor: [-1.14, 4.95], temperature: 58.4, radius: 0.12 },
+  { id: 'loc_15', name: 'T15', anchor: [1.14, 4.95], temperature: 61.2, radius: 0.12 },
+  { id: 'loc_16', name: 'T16', anchor: [3.42, 4.95], rayOrigin: [8, 1.05, 4.95], rayDirection: [-1, 0, 0], temperature: 57.9, radius: 0.12 },
+  { id: 'loc_9', name: 'T09', anchor: [-3.42, 2.25], rayOrigin: [-8, 1.05, 2.25], rayDirection: [1, 0, 0], temperature: 54.6, radius: 0.12 },
+  { id: 'loc_10', name: 'T10', anchor: [-1.14, 2.25], temperature: 59.8, radius: 0.12 },
+  { id: 'loc_11', name: 'T11', anchor: [1.14, 2.25], temperature: 62.5, radius: 0.12 },
+  { id: 'loc_12', name: 'T12', anchor: [3.42, 2.25], rayOrigin: [8, 1.05, 2.25], rayDirection: [-1, 0, 0], temperature: 60.7, radius: 0.12 },
+  { id: 'loc_5', name: 'T05', anchor: [-3.42, -1.8], rayOrigin: [-8, 1.05, -1.8], rayDirection: [1, 0, 0], temperature: 55.2, radius: 0.12 },
+  { id: 'loc_6', name: 'T06', anchor: [-1.14, -1.8], temperature: 57.1, radius: 0.12 },
+  { id: 'loc_1', name: 'T01', anchor: [1.14, -1.8], temperature: 58.9, radius: 0.13 },
+  { id: 'loc_7', name: 'T07', anchor: [3.42, -1.8], rayOrigin: [8, 1.05, -1.8], rayDirection: [-1, 0, 0], temperature: 56.5, radius: 0.12 },
+  { id: 'loc_2', name: 'T02', anchor: [-3.42, -5.35], rayOrigin: [-8, 1.05, -5.35], rayDirection: [1, 0, 0], temperature: 53.8, radius: 0.12 },
+  { id: 'loc_3', name: 'T03', anchor: [-1.14, -5.35], temperature: 55.7, radius: 0.12 },
+  { id: 'loc_4', name: 'T04', anchor: [1.14, -5.35], temperature: 59.4, radius: 0.12 },
+  { id: 'loc_8', name: 'T08', anchor: [3.42, -5.35], rayOrigin: [8, 1.05, -5.35], rayDirection: [-1, 0, 0], temperature: 57.6, radius: 0.12 },
+];
+
+const normalizeLocationId = (locationId: string) => locationId.toLowerCase().replace(/^loc_0+/, 'loc_');
+
+function getMonitorPointForLocation(locationId: string) {
+  const normalizedLocationId = normalizeLocationId(locationId);
+  return SURFACE_MONITOR_POINTS.find((monitorPoint) => normalizeLocationId(monitorPoint.id) === normalizedLocationId);
+}
+
+function ModbusTemperatureSurfaceGrid({
   point,
   status,
   alarm,
+  modelRef,
 }: {
   point: DigitalTwinTemperaturePoint | null;
   status: ModbusFeedStatus;
   alarm: DigitalTwinBusinessAlarm | null;
+  modelRef: React.RefObject<THREE.Group | null>;
 }) {
-  const pulseRef = useRef<THREE.Mesh>(null);
+  const markerRefs = useRef<Array<THREE.Group | null>>([]);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const hasSnapped = useRef(false);
   const isDisconnected = status === 'error';
   const isRetrying = status === 'retrying';
   const isConnectionIssue = isDisconnected || isRetrying;
   const isAlarm = Boolean(alarm) && !isConnectionIssue;
   const color = isDisconnected ? modbusStatusColor.error : isRetrying ? modbusStatusColor.retrying : isAlarm ? '#f97316' : modbusStatusColor[status];
+  const activeMonitorPoint = point
+    ? getMonitorPointForLocation(point.locationId) ?? SURFACE_MONITOR_POINTS.find((monitorPoint) => monitorPoint.id === 'loc_1')
+    : null;
 
-  useFrame(({ clock }) => {
-    if (!pulseRef.current) return;
-    const scale = 1 + Math.sin(clock.elapsedTime * 3.2) * 0.18;
-    pulseRef.current.scale.setScalar(scale);
+  const value = isAlarm && alarm ? alarm.maxTemp : point?.temperature ?? 0;
+
+  useFrame(({ camera, size }) => {
+    const model = modelRef.current;
+    if (model && !hasSnapped.current) {
+      model.updateWorldMatrix(true, true);
+      SURFACE_MONITOR_POINTS.forEach((monitorPoint, index) => {
+        const marker = markerRefs.current[index];
+        if (!marker) return;
+
+        // Top sensors project down; the two outer sensors project horizontally
+        // into the real CAD side walls. Neither relies on a fixed surface height.
+        const origin = monitorPoint.rayOrigin ?? [monitorPoint.anchor[0], 18, monitorPoint.anchor[1]];
+        const direction = monitorPoint.rayDirection ?? [0, -1, 0];
+        raycaster.set(new THREE.Vector3(...origin), new THREE.Vector3(...direction));
+        const hit = raycaster.intersectObject(model, true).find((intersection) => (intersection.object as THREE.Mesh).isMesh);
+        if (!hit) {
+          marker.visible = false;
+          return;
+        }
+
+        const normal = hit.face
+          ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize()
+          : new THREE.Vector3(0, 1, 0);
+        marker.position.copy(hit.point).addScaledVector(normal, 0.018);
+        marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+        marker.userData.surfaceNormal = normal;
+        marker.userData.snapped = true;
+      });
+      hasSnapped.current = true;
+    }
+
+    const candidates = markerRefs.current
+      .map((marker, index) => {
+        if (!marker?.userData.snapped) return null;
+        const normal = marker.userData.surfaceNormal as THREE.Vector3;
+        const cameraDirection = new THREE.Vector3().subVectors(camera.position, marker.getWorldPosition(new THREE.Vector3())).normalize();
+        const projected = marker.getWorldPosition(new THREE.Vector3()).project(camera);
+        return {
+          marker,
+          active: normalizeLocationId(SURFACE_MONITOR_POINTS[index].id) === activeMonitorPoint?.id,
+          eligible: normal.dot(cameraDirection) > 0.1 && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.1 && Math.abs(projected.y) <= 1.1,
+          x: (projected.x * 0.5 + 0.5) * size.width,
+          y: (-projected.y * 0.5 + 0.5) * size.height,
+          depth: projected.z,
+        };
+      })
+      .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+      .sort((left, right) => Number(right.active) - Number(left.active) || left.depth - right.depth);
+
+    const occupied: Array<{ x: number; y: number }> = [];
+    candidates.forEach((candidate) => {
+      const hasSpace = occupied.every((position) => Math.hypot(candidate.x - position.x, candidate.y - position.y) >= 128);
+      candidate.marker.visible = candidate.eligible && hasSpace;
+      if (candidate.marker.visible) occupied.push(candidate);
+    });
   });
 
-  if (!point) return null;
-
-  const value = isAlarm && alarm ? alarm.maxTemp : point.temperature;
-  const statusText = isDisconnected
-    ? '连接中断'
-    : isRetrying
-      ? '重连中'
-      : isAlarm && alarm
-        ? `高温报警 · ${alarm.level}级`
-        : modbusStatusLabel[status];
-  const detailText = isDisconnected
-    ? 'WS /ws/modbus 连接中断'
-    : isRetrying
-      ? 'WS /ws/modbus 正在重连'
-      : isAlarm && alarm
-        ? `阈值 ${alarm.thresholdTemp.toFixed(1)} °C · ${alarm.ruleType}`
-        : modbusStatusLabel[status];
-
   return (
-    <group position={MODBUS_SENSOR_POSITION}>
-      <mesh position={[0, 0.28, 0]}>
-        <cylinderGeometry args={[0.018, 0.018, 0.56, 14]} />
-        <meshBasicMaterial color={color} transparent opacity={0.72} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.1, 24, 16]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.9} roughness={0.34} metalness={0.12} />
-      </mesh>
-      <mesh ref={pulseRef} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.28, 0.01, 8, 72]} />
-        <meshBasicMaterial color={color} transparent opacity={0.66} depthWrite={false} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <pointLight color={color} intensity={2.2} distance={3.2} />
-      <Html position={[0, 0.78, 0]} center distanceFactor={9.2} style={{ pointerEvents: 'none' }}>
-        <div
-          style={{
-            minWidth: 142,
-            padding: '8px 10px',
-            border: `1px solid ${color}66`,
-            borderRadius: 8,
-            background: 'rgba(4, 10, 18, 0.78)',
-            boxShadow: `0 0 26px ${color}22`,
-            color: 'rgba(245,250,255,0.92)',
-            fontSize: 11,
-            lineHeight: 1.35,
-            transform: 'translateX(-92px)',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <div style={{ color: 'rgba(214,232,248,0.62)' }}>
-            {point.locationName} · {point.locationId}
-          </div>
-          <strong style={{ display: 'block', marginTop: 2, color, fontFamily: 'monospace', fontSize: 18, fontWeight: 700 }}>
-            {statusText} {value.toFixed(1)} °C
-          </strong>
-          <div style={{ marginTop: 2, color: 'rgba(214,232,248,0.62)' }}>
-            {detailText} · {isDisconnected ? point.receivedAt : alarm?.receivedAt ?? point.receivedAt}
-          </div>
-        </div>
-      </Html>
+    <group>
+      {SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
+        const active = activeMonitorPoint?.id === monitorPoint.id;
+        const temperature = active ? value : monitorPoint.temperature;
+        const markerColor = active ? color : temperature >= 60 ? '#f59e0b' : '#38bdf8';
+        return (
+          <group key={monitorPoint.id} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 14 : 10}>
+              <circleGeometry args={[monitorPoint.radius * 1.7, 32]} />
+              <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.26 : 0.15} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+            <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 15 : 11}>
+              <torusGeometry args={[monitorPoint.radius * 1.18, active ? 0.014 : 0.008, 8, 56]} />
+              <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.96 : 0.64} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+            <mesh position={[0, 0.004, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 16 : 12}>
+              <circleGeometry args={[active ? 0.055 : 0.032, 20]} />
+              <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.92 : 0.62} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+            <Html position={[0, 0.04, 0]} center distanceFactor={10.5} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 6,
+                  minWidth: 94,
+                  padding: '5px 8px',
+                  border: `1px solid ${markerColor}bb`,
+                  borderRadius: 6,
+                  background: 'rgba(3, 10, 17, 0.9)',
+                  boxShadow: `0 0 16px ${markerColor}33, inset 0 1px 0 rgba(255,255,255,0.08)`,
+                  color: '#f1f7fb',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span style={{ color: markerColor, fontSize: 11, fontWeight: 700, letterSpacing: '0.035em' }}>{monitorPoint.name}</span>
+                <strong style={{ fontSize: 13, fontWeight: 750, letterSpacing: '0.01em', textShadow: '0 1px 8px rgba(255,255,255,0.2)' }}>{temperature.toFixed(1)}°C</strong>
+              </div>
+            </Html>
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -692,6 +764,8 @@ export default function HotMetalTroughSimScene({
   feedStatus = 'mock',
   businessAlarm = null,
 }: HotMetalTroughSimSceneProps) {
+  const cadModelRef = useRef<THREE.Group | null>(null);
+
   return (
     <Canvas
       camera={{ position: [8.8, 5.4, 8.2], fov: 42, near: 0.1, far: 120 }}
@@ -709,8 +783,10 @@ export default function HotMetalTroughSimScene({
       <color attach="background" args={['#040911']} />
       <fog attach="fog" args={['#040911', 12, 34]} />
 
-      <ambientLight intensity={0.72} color="#dbeafe" />
+      <ambientLight intensity={0.84} color="#dbeafe" />
+      <hemisphereLight args={['#b8dff5', '#0b1822', 0.3]} />
       <directionalLight position={[7, 9, 7]} intensity={2.25} color="#ffffff" castShadow />
+      <directionalLight position={[-8, 5.5, -7]} intensity={1.05} color="#9fd6ef" />
       <pointLight position={[-4, 3.2, 3]} intensity={5.2} color="#22d3ee" distance={10} />
       <pointLight position={[4.5, 2.4, -3.2]} intensity={3.8} color="#fb923c" distance={10} />
       <pointLight position={[-2.6, 1.1, -0.4]} intensity={7.2} color="#f97316" distance={7} />
@@ -718,9 +794,9 @@ export default function HotMetalTroughSimScene({
 
       <Suspense fallback={<SceneLoader />}>
         <group>
-          <CadModel />
+          <CadModel modelRef={cadModelRef} />
           <SimulationOverlays activeLayer={activeLayer} />
-          <ModbusTemperatureMarker point={temperaturePoint} status={feedStatus} alarm={businessAlarm} />
+          <ModbusTemperatureSurfaceGrid point={temperaturePoint} status={feedStatus} alarm={businessAlarm} modelRef={cadModelRef} />
           <Grid
             position={[0, -0.02, 0]}
             args={[18, 18]}

@@ -8,6 +8,7 @@ import type { TableColumnsType } from 'antd';
 import * as echarts from 'echarts';
 import type { EChartsOption, EChartsType } from 'echarts';
 import { AppDateTimePicker } from '@/components/AppDatePicker';
+import AntdStyleRegistry from '@/components/AntdStyleRegistry';
 import {
   Alert,
   Button,
@@ -605,6 +606,7 @@ export default function TemperatureTrendReport() {
   };
 
   return (
+    <AntdStyleRegistry>
     <ConfigProvider
       locale={zhCN}
       theme={{
@@ -1144,5 +1146,6 @@ export default function TemperatureTrendReport() {
         `}</style>
       </section>
     </ConfigProvider>
+    </AntdStyleRegistry>
   );
 }

@@ -51,6 +51,14 @@ export const deviceTypes: DeviceTypeConfig[] = [
     color: '#06b6d4',
     templateId: 'trough-sim-monitor',
   },
+  {
+    id: 'ladle-recognition',
+    name: '钢包识别',
+    description: '红外测温 + 雷达渣线检测 + OCR包号识别',
+    icon: 'scan-text',
+    color: '#0a84ff',
+    templateId: 'ladle-recognition-monitor',
+  },
 ];
 
 // 模板配置
@@ -102,6 +110,14 @@ export const templates: TemplateConfig[] = [
     icon: 'waves',
     color: '#06b6d4',
     supportedDeviceTypes: ['hot-metal-trough-sim'],
+  },
+  {
+    id: 'ladle-recognition-monitor',
+    name: '钢包识别',
+    description: '红外测温、雷达渣线与 OCR 包号三模态监测',
+    icon: 'scan-text',
+    color: '#0a84ff',
+    supportedDeviceTypes: ['ladle-recognition'],
   },
 ];
 
@@ -221,6 +237,16 @@ export const winccInstances: WinCCInstance[] = [
     lastUpdate: '2024-01-15 14:30:28',
     ipAddress: '192.168.10.511',
     tags: ['视觉仿真', '演示层', '数字孪生'],
+  },
+  {
+    id: 'ladle-recognition-001',
+    name: '热修位钢包识别',
+    location: '炼钢二厂 - 热修位',
+    deviceType: 'ladle-recognition',
+    status: 'online',
+    lastUpdate: '2026-07-23 14:30:28',
+    ipAddress: '192.168.10.521',
+    tags: ['OCR识别', '雷达扫描', '双模态检测'],
   },
 ];
 

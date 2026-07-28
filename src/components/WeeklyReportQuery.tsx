@@ -28,6 +28,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import type { ColumnsType } from 'antd/es/table';
+import AntdStyleRegistry from '@/components/AntdStyleRegistry';
 import { AppDatePicker } from '@/components/AppDatePicker';
 import {
   apiMockModeLabel,
@@ -505,6 +506,7 @@ export default function WeeklyReportQuery() {
         : '待下载';
 
   return (
+    <AntdStyleRegistry>
     <ConfigProvider
       locale={zhCN}
       componentSize="middle"
@@ -808,5 +810,6 @@ export default function WeeklyReportQuery() {
         `}</style>
       </Flex>
     </ConfigProvider>
+    </AntdStyleRegistry>
   );
 }

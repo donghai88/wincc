@@ -9,22 +9,41 @@ import type { DigitalTwinBusinessAlarm, DigitalTwinTemperaturePoint, ModbusFeedS
 const MODEL_PATH = '/cad/langan.glb';
 const BACKGROUND = '#05070a';
 const NORMALIZED_SPAN = 13.8;
-const SENSOR_ANCHOR_POSITION: [number, number, number] = [0, 2.72, 0];
+
+interface SurfaceMonitorPoint {
+  id: string;
+  position: [number, number, number];
+}
+
+// These positions sit on the upper working surface of the normalized CAD model.
+// The staggered rows leave enough physical space between sensors before any
+// screen-space decluttering is applied.
+const SURFACE_MONITOR_POINTS: SurfaceMonitorPoint[] = [
+  { id: 'loc_13', position: [-3.12, 2.318, 4.95] },
+  { id: 'loc_14', position: [-0.92, 2.318, 5.03] },
+  { id: 'loc_15', position: [1.34, 2.318, 4.88] },
+  { id: 'loc_16', position: [3.28, 2.318, 5.0] },
+  { id: 'loc_9', position: [-3.52, 2.318, 2.22] },
+  { id: 'loc_10', position: [-1.24, 2.318, 2.36] },
+  { id: 'loc_11', position: [0.98, 2.318, 2.18] },
+  { id: 'loc_12', position: [3.08, 2.318, 2.34] },
+  { id: 'loc_5', position: [-3.14, 2.318, -1.82] },
+  { id: 'loc_6', position: [-0.72, 2.318, -1.64] },
+  { id: 'loc_1', position: [1.72, 2.318, -1.9] },
+  { id: 'loc_7', position: [3.52, 2.318, -1.72] },
+  { id: 'loc_2', position: [-3.44, 2.318, -5.38] },
+  { id: 'loc_3', position: [-1.02, 2.318, -5.22] },
+  { id: 'loc_4', position: [1.26, 2.318, -5.48] },
+  { id: 'loc_8', position: [3.42, 2.318, -5.28] },
+];
+
+const normalizeLocationId = (locationId: string) => locationId.toLowerCase().replace(/^loc_0+/, 'loc_');
 
 export interface BlastFurnaceSceneProps {
   temperaturePoint?: DigitalTwinTemperaturePoint | null;
   feedStatus?: ModbusFeedStatus;
   businessAlarm?: DigitalTwinBusinessAlarm | null;
 }
-
-const feedStatusLabel: Record<ModbusFeedStatus, string> = {
-  mock: 'Mock 推送',
-  connecting: 'WS 连接中',
-  connected: 'WS 实时',
-  fallback: 'WS 回退 Mock',
-  error: 'WS 异常',
-  retrying: '重连中',
-};
 
 const feedStatusColor: Record<ModbusFeedStatus, string> = {
   mock: '#4cc9f0',
@@ -68,7 +87,7 @@ function CadModel() {
   return <primitive object={clonedScene} />;
 }
 
-function TemperatureSensorMarker({
+function SurfaceMonitorGrid({
   point,
   status,
   alarm,
@@ -77,79 +96,81 @@ function TemperatureSensorMarker({
   status: ModbusFeedStatus;
   alarm: DigitalTwinBusinessAlarm | null;
 }) {
-  const pulseRef = useRef<THREE.Mesh>(null);
+  const markerRefs = useRef<Array<THREE.Group | null>>([]);
+  const activePulseRef = useRef<THREE.Group>(null);
   const isDisconnected = status === 'error';
   const isRetrying = status === 'retrying';
   const isConnectionIssue = isDisconnected || isRetrying;
   const isAlarm = Boolean(alarm) && !isConnectionIssue;
   const color = isDisconnected ? feedStatusColor.error : isRetrying ? feedStatusColor.retrying : isAlarm ? '#f97316' : feedStatusColor[status];
 
-  useFrame(({ clock }) => {
-    if (!pulseRef.current) return;
+  const activeLocationId = point ? normalizeLocationId(point.locationId) : null;
+
+  useFrame(({ clock, camera, size }) => {
+    if (activePulseRef.current) {
     const scale = 1 + Math.sin(clock.elapsedTime * 3.1) * 0.18;
-    pulseRef.current.scale.setScalar(scale);
+      activePulseRef.current.scale.setScalar(scale);
+    }
+
+    const candidates = SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
+      const marker = markerRefs.current[index];
+      if (!marker) return null;
+
+      const worldPosition = marker.getWorldPosition(new THREE.Vector3());
+      const cameraDirection = new THREE.Vector3().subVectors(camera.position, worldPosition).normalize();
+      const facesCamera = cameraDirection.dot(new THREE.Vector3(0, 1, 0)) > 0.12;
+      const projected = worldPosition.clone().project(camera);
+      const isInViewport = projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.12 && Math.abs(projected.y) <= 1.12;
+
+      return {
+        marker,
+        active: normalizeLocationId(monitorPoint.id) === activeLocationId,
+        x: (projected.x * 0.5 + 0.5) * size.width,
+        y: (-projected.y * 0.5 + 0.5) * size.height,
+        depth: projected.z,
+        eligible: facesCamera && isInViewport,
+      };
+    })
+      .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+      // Preserve the live-data point first, then favour the closest visible points.
+      .sort((left, right) => Number(right.active) - Number(left.active) || left.depth - right.depth);
+
+    const accepted: Array<{ x: number; y: number }> = [];
+    for (const candidate of candidates) {
+      const hasRoom = accepted.every(({ x, y }) => Math.hypot(candidate.x - x, candidate.y - y) >= 42);
+      candidate.marker.visible = candidate.eligible && hasRoom;
+      if (candidate.marker.visible) accepted.push(candidate);
+    }
   });
 
-  if (!point) return null;
-
-  const value = isAlarm && alarm ? alarm.maxTemp : point.temperature;
-  const statusText = isDisconnected
-    ? '连接中断'
-    : isRetrying
-      ? '重连中'
-      : isAlarm && alarm
-        ? `高温报警 · ${alarm.level}级`
-        : feedStatusLabel[status];
-  const detailText = isDisconnected
-    ? 'WS /ws/modbus 连接中断'
-    : isRetrying
-      ? 'WS /ws/modbus 正在重连'
-      : isAlarm && alarm
-        ? `阈值 ${alarm.thresholdTemp.toFixed(1)} °C · ${alarm.ruleType}`
-        : feedStatusLabel[status];
-
   return (
-    <group position={SENSOR_ANCHOR_POSITION}>
-      <mesh position={[0, 0.2, 0]}>
-        <cylinderGeometry args={[0.012, 0.012, 0.4, 14]} />
-        <meshBasicMaterial color={color} transparent opacity={0.78} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.07, 24, 16]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.8} roughness={0.36} metalness={0.15} />
-      </mesh>
-      <mesh ref={pulseRef} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.18, 0.007, 8, 64]} />
-        <meshBasicMaterial color={color} transparent opacity={0.64} depthWrite={false} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <pointLight color={color} intensity={1.35} distance={1.8} />
-      <Html position={[0, 0.54, 0]} center distanceFactor={8.5} style={{ pointerEvents: 'none' }}>
-        <div
-          style={{
-            minWidth: 138,
-            padding: '8px 10px',
-            border: `1px solid ${color}66`,
-            borderRadius: 8,
-            background: 'rgba(5, 7, 10, 0.78)',
-            boxShadow: `0 0 24px ${color}22`,
-            color: 'rgba(245,250,255,0.92)',
-            fontSize: 11,
-            lineHeight: 1.35,
-            transform: 'translateX(-86px)',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <div style={{ color: 'rgba(214,232,248,0.62)' }}>
-            {point.locationName} · {point.locationId}
-          </div>
-          <strong style={{ display: 'block', marginTop: 2, color, fontFamily: 'monospace', fontSize: 18, fontWeight: 700 }}>
-            {statusText} {value.toFixed(1)} °C
-          </strong>
-          <div style={{ marginTop: 2, color: 'rgba(214,232,248,0.62)' }}>
-            {detailText} · {isDisconnected ? point.receivedAt : alarm?.receivedAt ?? point.receivedAt}
-          </div>
-        </div>
-      </Html>
+    <group>
+      {SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
+        const active = normalizeLocationId(monitorPoint.id) === activeLocationId;
+        const markerColor = active ? color : '#67d6f3';
+
+        return (
+          <group key={monitorPoint.id} ref={(node) => { markerRefs.current[index] = node; }} position={monitorPoint.position}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 12 : 10}>
+              <torusGeometry args={[active ? 0.16 : 0.105, active ? 0.011 : 0.006, 8, active ? 64 : 48]} />
+              <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.9 : 0.46} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+            <mesh position={[0, 0.004, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 13 : 11}>
+              <circleGeometry args={[active ? 0.045 : 0.022, 20]} />
+              <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.78 : 0.34} depthWrite={false} blending={THREE.AdditiveBlending} />
+            </mesh>
+            {active && (
+              <group ref={activePulseRef}>
+                <mesh position={[0, 0.006, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <torusGeometry args={[0.29, 0.006, 8, 72]} />
+                  <meshBasicMaterial color={color} transparent opacity={0.52} depthWrite={false} blending={THREE.AdditiveBlending} />
+                </mesh>
+                <pointLight color={color} intensity={0.9} distance={1.25} />
+              </group>
+            )}
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -204,7 +225,7 @@ export default function BlastFurnaceScene({
         <Bounds fit clip observe margin={1.12}>
           <group>
             <CadModel />
-            <TemperatureSensorMarker point={temperaturePoint} status={feedStatus} alarm={businessAlarm} />
+            <SurfaceMonitorGrid point={temperaturePoint} status={feedStatus} alarm={businessAlarm} />
           </group>
         </Bounds>
       </Suspense>

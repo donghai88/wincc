@@ -7,7 +7,8 @@ export type DeviceType =
   | 'continuous-cast' // 连铸机
   | 'heating-furnace' // 加热炉
   | 'hot-metal-trough' // 铁水沟
-  | 'hot-metal-trough-sim'; // 铁水沟一（视觉仿真）
+  | 'hot-metal-trough-sim' // 铁水沟一（视觉仿真）
+  | 'ladle-recognition'; // 钢包识别
 
 // 设备类型配置
 export interface DeviceTypeConfig {

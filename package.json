@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "predev": "node scripts/ensure-tailwind-resolve.mjs",
+    "dev": "node scripts/dev-with-warmup.mjs",
+    "dev:raw": "next dev -p 3001",
+    "prebuild": "node scripts/ensure-tailwind-resolve.mjs",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/serve-static.mjs",
     "lint": "eslint"
   },
   "dependencies": {
