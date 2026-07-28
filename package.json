@@ -5,9 +5,13 @@
   "scripts": {
     "predev": "node scripts/ensure-tailwind-resolve.mjs",
     "dev": "node scripts/dev-with-warmup.mjs",
+    "dev:trough": "NEXT_PUBLIC_PRODUCT_MODE=trough node scripts/dev-with-warmup.mjs",
+    "dev:ladle-recognition": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition node scripts/dev-with-warmup.mjs",
     "dev:raw": "next dev -p 3001",
     "prebuild": "node scripts/ensure-tailwind-resolve.mjs",
     "build": "next build",
+    "build:trough": "NEXT_PUBLIC_PRODUCT_MODE=trough next build",
+    "build:ladle-recognition": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition next build",
     "start": "node scripts/serve-static.mjs",
     "lint": "eslint"
   },

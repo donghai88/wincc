@@ -19,6 +19,7 @@ import { deviceTypes, groupWinCCByDeviceType } from '@/data/wincc-config';
 
 interface DeviceTypeOverviewProps {
   onSelectDeviceType: (deviceType: DeviceType) => void;
+  visibleDeviceTypes?: DeviceType[];
 }
 
 // 图标映射
@@ -32,8 +33,11 @@ const iconMap: Record<string, LucideIcon> = {
   'scan-text': ScanText,
 };
 
-export default function DeviceTypeOverview({ onSelectDeviceType }: DeviceTypeOverviewProps) {
+export default function DeviceTypeOverview({ onSelectDeviceType, visibleDeviceTypes }: DeviceTypeOverviewProps) {
   const grouped = groupWinCCByDeviceType();
+  const visibleTypes = visibleDeviceTypes
+    ? deviceTypes.filter((deviceType) => visibleDeviceTypes.includes(deviceType.id))
+    : deviceTypes;
 
   return (
     <div>
@@ -55,7 +59,7 @@ export default function DeviceTypeOverview({ onSelectDeviceType }: DeviceTypeOve
           gap: 16,
         }}
       >
-        {deviceTypes.map((dt) => {
+        {visibleTypes.map((dt) => {
           const Icon = iconMap[dt.icon] || Circle;
           const instances = grouped[dt.id] || [];
           const onlineCount = instances.filter((i) => i.status === 'online').length;

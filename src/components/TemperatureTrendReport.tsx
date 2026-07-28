@@ -753,7 +753,7 @@ export default function TemperatureTrendReport() {
                 value={summary.latest}
                 precision={2}
                 suffix="°C"
-                valueStyle={{ color: '#ffffff' }}
+                styles={{ content: { color: '#ffffff' } }}
               />
               <span className="metric-note">
                 {latestPoint ? formatDisplayDateTime(latestPoint.timestamp) : '暂无采样'}
@@ -779,7 +779,7 @@ export default function TemperatureTrendReport() {
                 value={summary.delta}
                 precision={2}
                 suffix="°C"
-                valueStyle={{ color: summary.delta >= 0 ? '#ff9d96' : '#8df0a7' }}
+                styles={{ content: { color: summary.delta >= 0 ? '#ff9d96' : '#8df0a7' } }}
               />
               <span className="metric-note">末值 - 首值</span>
             </Card>

@@ -2,10 +2,17 @@
 
 import { CheckCircle2, AlertTriangle, XCircle, WifiOff } from 'lucide-react';
 import { groupWinCCByDeviceType } from '@/data/wincc-config';
+import type { DeviceType } from '@/types/template';
 
-export default function SystemOverview() {
+interface SystemOverviewProps {
+  visibleDeviceTypes?: DeviceType[];
+}
+
+export default function SystemOverview({ visibleDeviceTypes }: SystemOverviewProps) {
   const grouped = groupWinCCByDeviceType();
-  const allInstances = Object.values(grouped).flat();
+  const allInstances = (visibleDeviceTypes
+    ? visibleDeviceTypes.flatMap((deviceType) => grouped[deviceType] ?? [])
+    : Object.values(grouped).flat());
 
   const totalOnline = allInstances.filter((i) => i.status === 'online').length;
   const totalWarning = allInstances.filter((i) => i.status === 'warning').length;

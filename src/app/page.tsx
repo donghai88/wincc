@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { WinCCInstance, DeviceType } from '@/types/template';
 import { getDeviceTypeConfig, groupWinCCByDeviceType } from '@/data/wincc-config';
+import { productConfig } from '@/lib/product-mode';
 import Sidebar from '@/components/Sidebar';
 import SystemOverview from '@/components/SystemOverview';
 import DeviceTypeOverview from '@/components/DeviceTypeOverview';
@@ -91,8 +92,11 @@ export default function Home() {
 
     return (
       <>
-        <SystemOverview />
-        <DeviceTypeOverview onSelectDeviceType={handleSelectDeviceType} />
+        <SystemOverview visibleDeviceTypes={productConfig ? [productConfig.deviceType] : undefined} />
+        <DeviceTypeOverview
+          onSelectDeviceType={handleSelectDeviceType}
+          visibleDeviceTypes={productConfig ? [productConfig.deviceType] : undefined}
+        />
       </>
     );
   };
