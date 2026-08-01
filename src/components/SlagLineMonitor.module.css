@@ -1,0 +1,103 @@
+.shell {
+  --surface: rgba(8, 18, 29, .86);
+  --border: rgba(151, 178, 210, .17);
+  --muted: rgba(208, 226, 244, .62);
+  min-height: calc(100vh - 56px);
+  color: #eff8ff;
+  background: radial-gradient(circle at 82% 8%, rgba(34, 211, 238, .12), transparent 25%), linear-gradient(160deg, #07131f, #02060b 68%);
+}
+
+.topBar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: rgba(2, 6, 11, .8); }
+.backButton { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; background: rgba(255,255,255,.04); color: #e6f4ff; cursor: pointer; font-size: 13px; }
+.backButton:hover { border-color: rgba(34,211,238,.55); background: rgba(34,211,238,.1); }
+.titleBlock { min-width: 0; }
+.titleBlock > div { display: flex; align-items: center; gap: 8px; color: #22d3ee; }
+.titleBlock h2 { color: #fff; font-size: 18px; font-weight: 680; }
+.titleBlock span { padding: 3px 7px; border: 1px solid rgba(251,191,36,.38); border-radius: 99px; color: #fde68a; background: rgba(251,191,36,.09); font-size: 10px; }
+.titleBlock p { overflow: hidden; margin-top: 4px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.running { display: inline-flex; align-items: center; gap: 7px; color: #b8d9cd; font: 11px var(--font-mono); }
+.running i { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 12px #34d399; }
+
+.workspace { max-width: 1500px; margin: 0 auto; padding: 16px; }
+.alert { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 16px; padding: 11px 14px; border: 1px solid rgba(52,211,153,.28); border-radius: 8px; background: rgba(52,211,153,.08); color: #a7f3d0; font: 12px/1.5 var(--font-mono); }
+.alert svg { flex: 0 0 auto; margin-top: 1px; }
+.grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; }
+.sidebar, .mainContent { display: flex; min-width: 0; flex-direction: column; gap: 14px; }
+.panel { border: 1px solid var(--border); border-radius: 9px; background: var(--surface); box-shadow: 0 16px 38px rgba(0,0,0,.24); }
+.sidebar .panel, .mainContent .panel, .bottomGrid .panel { padding: 14px; }
+.panel h3 { margin: 0; color: #f5fbff; font-size: 13px; font-weight: 650; }
+.panel p { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.sidebar select { width: 100%; margin-top: 12px; padding: 9px 10px; border: 1px solid rgba(96,165,250,.28); border-radius: 6px; outline: none; background: #081624; color: #e8f5ff; font: 13px var(--font-mono); }
+.scanButton { display: flex; width: 100%; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; padding: 10px; border: 1px solid rgba(34,211,238,.45); border-radius: 6px; background: rgba(34,211,238,.11); color: #67e8f9; cursor: pointer; font-size: 12px; font-weight: 650; }
+.scanButton:hover:not(:disabled) { background: rgba(34,211,238,.2); }
+.scanButton:disabled { opacity: .55; cursor: default; }
+.progress { margin-top: 12px; }
+.progress > div { height: 5px; overflow: hidden; border-radius: 99px; background: rgba(151,178,210,.15); }
+.progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #22d3ee, #34d399); transition: width 100ms linear; }
+.progress span { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.recordPanel { min-height: 356px; }
+.recordHead, .record { display: grid; grid-template-columns: 1.55fr .8fr .46fr .65fr; gap: 6px; align-items: center; }
+.recordHead { margin: 12px -14px 0; padding: 8px 14px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); color: rgba(208,226,244,.42); font-size: 10px; }
+.recordList { max-height: 310px; overflow: auto; }
+.record { padding: 10px 1px; border-bottom: 1px solid rgba(151,178,210,.09); font-size: 10px; }
+.record time { color: var(--muted); font: 10px var(--font-mono); }
+.record b { font: 650 11px var(--font-mono); }
+.record > span { color: var(--muted); text-align: center; }
+.record em, .rating { padding: 3px 5px; border-radius: 4px; font-size: 10px; font-style: normal; text-align: center; }
+.safe { color: #6ee7b7 !important; }
+.warning { color: #fcd34d !important; }
+.danger { color: #fca5a5 !important; }
+.record em.safe, .rating.safe { background: rgba(52,211,153,.12); }
+.record em.warning, .rating.warning { background: rgba(251,191,36,.12); }
+.record em.danger, .rating.danger { background: rgba(248,113,113,.12); }
+
+.panelHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.panelHeader h3 b { color: #38bdf8; font-family: var(--font-mono); }
+.viewButtons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.viewButtons button { padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: rgba(255,255,255,.035); color: var(--muted); cursor: pointer; font-size: 11px; }
+.viewButtons button:hover, .viewButtons button.active { border-color: rgba(34,211,238,.52); background: rgba(34,211,238,.12); color: #67e8f9; }
+.canvasWrap { position: relative; margin-top: 12px; overflow: hidden; border: 1px solid rgba(34,211,238,.16); border-radius: 6px; background: #040b13; }
+.canvasWrap canvas { display: block; width: 100%; height: auto; max-height: 480px; }
+.canvasFooter { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; color: rgba(208,226,244,.5); font: 10px var(--font-mono); }
+.canvasFooter i { margin-left: 7px; font-style: normal; }
+.chartWrap { margin-top: 12px; }
+.chartWrap svg { display: block; width: 100%; height: 175px; overflow: visible; }
+.chartAxis { display: flex; justify-content: space-between; margin: -5px 2px 0; color: rgba(208,226,244,.46); font: 10px var(--font-mono); }
+
+.bottomGrid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; margin-top: 14px; }
+.thresholds { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+.thresholds label { display: flex; min-height: 110px; flex-direction: column; padding: 13px; border: 1px solid currentColor; border-radius: 7px; background: rgba(255,255,255,.025); }
+.thresholds label > span { font-size: 12px; font-weight: 650; }
+.thresholds b { margin-top: 9px; color: #fff; font: 700 21px var(--font-mono); white-space: nowrap; }
+.thresholds small { margin-top: 11px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.thresholds input { width: 100%; margin-top: auto; accent-color: currentColor; }
+.summary { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 16px; }
+.summary > div { padding: 0 11px; border-right: 1px solid var(--border); }
+.summary > div:first-child { padding-left: 0; }
+.summary > div:last-child { border-right: 0; }
+.summary span { display: block; color: var(--muted); font-size: 10px; }
+.summary b { display: block; margin-top: 6px; color: #fff; font: 650 16px var(--font-mono); }
+.summaryNote { display: flex; align-items: center; gap: 7px; margin-top: 16px !important; padding-top: 12px; border-top: 1px solid var(--border); color: #b6d6eb !important; }
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: 1fr; }
+  .sidebar { display: grid; grid-template-columns: 280px 1fr; align-items: start; }
+  .recordPanel { min-height: 0; }
+  .bottomGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 680px) {
+  .topBar { grid-template-columns: auto 1fr; padding: 12px; }
+  .running { display: none; }
+  .backButton { padding: 8px; font-size: 0; }
+  .backButton svg { width: 18px; height: 18px; }
+  .workspace { padding: 12px; }
+  .alert { font-size: 10px; }
+  .sidebar { display: flex; }
+  .panelHeader { flex-direction: column; }
+  .viewButtons { justify-content: flex-start; }
+  .canvasFooter { flex-direction: column; }
+  .thresholds, .summary { grid-template-columns: repeat(2, 1fr); }
+  .summary > div:nth-child(2) { border-right: 0; }
+  .summary > div:nth-child(n+3) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .thresholds label { min-height: 95px; }
+}

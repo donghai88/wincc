@@ -32,6 +32,8 @@ import {
 const HotMetalTroughTwin = dynamic(() => import('@/components/digital-twin/HotMetalTroughTwin'), { ssr: false });
 const HotMetalTroughSimTwin = dynamic(() => import('@/components/digital-twin/HotMetalTroughSimTwin'), { ssr: false });
 const LadleRecognitionMonitor = dynamic(() => import('@/components/LadleRecognitionMonitor'), { ssr: false });
+const LadleMonitoringModeSelector = dynamic(() => import('@/components/LadleMonitoringModeSelector'), { ssr: false });
+const SlagLineMonitor = dynamic(() => import('@/components/SlagLineMonitor'), { ssr: false });
 
 // 判断指标状态
 function getMetricStatus(metric: MetricValue): 'normal' | 'warning' | 'critical' {
@@ -201,6 +203,7 @@ export default function DeviceMonitorPanel({
 }: DeviceMonitorPanelProps) {
   const [historyHoursAgo, setHistoryHoursAgo] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [ladleMonitorMode, setLadleMonitorMode] = useState<'selector' | 'thermal' | 'radar'>('selector');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -253,10 +256,25 @@ export default function DeviceMonitorPanel({
   }
 
   if (isLadleRecognition) {
+    if (ladleMonitorMode === 'selector') {
+      return (
+        <LadleMonitoringModeSelector
+          wincc={selectedWinCC}
+          onBack={onBack}
+          onSelectThermal={() => setLadleMonitorMode('thermal')}
+          onSelectRadar={() => setLadleMonitorMode('radar')}
+        />
+      );
+    }
+
+    if (ladleMonitorMode === 'radar') {
+      return <SlagLineMonitor wincc={selectedWinCC} onBack={() => setLadleMonitorMode('selector')} />;
+    }
+
     return (
       <>
         {pulseKeyframes}
-        <LadleRecognitionMonitor wincc={selectedWinCC} onBack={onBack} />
+        <LadleRecognitionMonitor wincc={selectedWinCC} onBack={() => setLadleMonitorMode('selector')} />
       </>
     );
   }
