@@ -21,6 +21,7 @@ const flowCurve = new THREE.CatmullRomCurve3([
 export interface HotMetalTroughSimSceneProps {
   activeLayer: SimulationLayer;
   temperaturePoint?: DigitalTwinTemperaturePoint | null;
+  temperaturePoints?: DigitalTwinTemperaturePoint[];
   feedStatus?: ModbusFeedStatus;
   businessAlarm?: DigitalTwinBusinessAlarm | null;
 }
@@ -361,11 +362,13 @@ function getMonitorPointForLocation(locationId: string) {
 
 function ModbusTemperatureSurfaceGrid({
   point,
+  points,
   status,
   alarm,
   modelRef,
 }: {
   point: DigitalTwinTemperaturePoint | null;
+  points: DigitalTwinTemperaturePoint[];
   status: ModbusFeedStatus;
   alarm: DigitalTwinBusinessAlarm | null;
   modelRef: React.RefObject<THREE.Group | null>;
@@ -378,11 +381,11 @@ function ModbusTemperatureSurfaceGrid({
   const isConnectionIssue = isDisconnected || isRetrying;
   const isAlarm = Boolean(alarm) && !isConnectionIssue;
   const color = isDisconnected ? modbusStatusColor.error : isRetrying ? modbusStatusColor.retrying : isAlarm ? '#f97316' : modbusStatusColor[status];
-  const activeMonitorPoint = point
-    ? getMonitorPointForLocation(point.locationId) ?? SURFACE_MONITOR_POINTS.find((monitorPoint) => monitorPoint.id === 'loc_1')
-    : null;
-
-  const value = isAlarm && alarm ? alarm.maxTemp : point?.temperature ?? 0;
+  const activeMonitorPoint = point ? getMonitorPointForLocation(point.locationId) : null;
+  const temperatureByLocation = useMemo(
+    () => new Map(points.map((temperaturePoint) => [normalizeLocationId(temperaturePoint.locationId), temperaturePoint.temperature])),
+    [points]
+  );
 
   useFrame(({ camera, size }) => {
     const model = modelRef.current;
@@ -444,8 +447,10 @@ function ModbusTemperatureSurfaceGrid({
     <group>
       {SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
         const active = activeMonitorPoint?.id === monitorPoint.id;
-        const temperature = active ? value : monitorPoint.temperature;
-        const markerColor = active ? color : temperature >= 60 ? '#f59e0b' : '#38bdf8';
+        const realTimeTemperature = active && isAlarm && alarm
+          ? alarm.maxTemp
+          : temperatureByLocation.get(normalizeLocationId(monitorPoint.id));
+        const markerColor = active ? color : realTimeTemperature === undefined ? '#64748b' : realTimeTemperature >= 60 ? '#f59e0b' : '#38bdf8';
         return (
           <group key={monitorPoint.id} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
             <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 14 : 10}>
@@ -479,7 +484,7 @@ function ModbusTemperatureSurfaceGrid({
                 }}
               >
                 <span style={{ color: markerColor, fontSize: 11, fontWeight: 700, letterSpacing: '0.035em' }}>{monitorPoint.name}</span>
-                <strong style={{ fontSize: 13, fontWeight: 750, letterSpacing: '0.01em', textShadow: '0 1px 8px rgba(255,255,255,0.2)' }}>{temperature.toFixed(1)}°C</strong>
+                <strong style={{ fontSize: 13, fontWeight: 750, letterSpacing: '0.01em', textShadow: '0 1px 8px rgba(255,255,255,0.2)' }}>{realTimeTemperature === undefined ? '--' : `${realTimeTemperature.toFixed(1)}°C`}</strong>
               </div>
             </Html>
           </group>
@@ -503,7 +508,7 @@ function SceneLoader() {
           backdropFilter: 'blur(10px)',
         }}
       >
-        加载 GLB 模型与仿真覆盖层...
+        正在加载三维模型...
       </div>
     </Html>
   );
@@ -761,6 +766,7 @@ useGLTF.preload(MODEL_PATH);
 export default function HotMetalTroughSimScene({
   activeLayer,
   temperaturePoint = null,
+  temperaturePoints = [],
   feedStatus = 'mock',
   businessAlarm = null,
 }: HotMetalTroughSimSceneProps) {
@@ -796,7 +802,7 @@ export default function HotMetalTroughSimScene({
         <group>
           <CadModel modelRef={cadModelRef} />
           <SimulationOverlays activeLayer={activeLayer} />
-          <ModbusTemperatureSurfaceGrid point={temperaturePoint} status={feedStatus} alarm={businessAlarm} modelRef={cadModelRef} />
+          <ModbusTemperatureSurfaceGrid point={temperaturePoint} points={temperaturePoints} status={feedStatus} alarm={businessAlarm} modelRef={cadModelRef} />
           <Grid
             position={[0, -0.02, 0]}
             args={[18, 18]}

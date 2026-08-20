@@ -15,7 +15,7 @@ import type {
 
 const BUSINESS_ALARM_WS_PATH = '/ws/business/alarm';
 const MOCK_ALARM_DELAY_MS = 10000;
-const MOCK_ALARM_MESSAGE = 'Mock：收到业务高温报警推送';
+const MOCK_ALARM_MESSAGE = '收到高温报警推送';
 
 type RawBusinessAlarm = Omit<DigitalTwinBusinessAlarm, 'receivedAt' | 'source'>;
 
@@ -250,17 +250,17 @@ export function useBusinessAlarmFeed(): BusinessAlarmFeed {
 
       socket.addEventListener('error', () => {
         if (disposed || mockAlarmTimer !== undefined) return;
-        fallBackOrError('WS /ws/business/alarm 连接失败');
+        fallBackOrError('报警推送连接失败');
       });
 
       socket.addEventListener('close', () => {
         if (disposed || mockAlarmTimer !== undefined) return;
-        fallBackOrError('WS /ws/business/alarm 已断开');
+        fallBackOrError('报警推送已断开');
       });
-    } catch (error) {
+    } catch {
       window.setTimeout(() => {
         if (disposed) return;
-        fallBackOrError(error instanceof Error ? error.message : 'WS /ws/business/alarm 初始化失败');
+        fallBackOrError('报警推送初始化失败');
       }, 0);
     }
 

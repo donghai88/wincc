@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, ArrowLeft, CheckCircle2, Radar, ScanLine, TriangleAlert } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
+import workspaceStyles from './MonitoringWorkspace.module.css';
 import styles from './SlagLineMonitor.module.css';
 
 type ViewMode = 'iso' | 'top' | 'side' | 'section';
@@ -46,6 +47,7 @@ const initialRecords: Record<string, SlagRecord[]> = {
   ],
 };
 
+const DEFAULT_SLAG_LINE_THRESHOLDS: SlagLineThresholds = { safe: 30, danger: 50 };
 const ladleIds = Object.keys(initialRecords);
 const views: Array<{ id: ViewMode; label: string }> = [
   { id: 'iso', label: '等轴测' },
@@ -135,18 +137,37 @@ function drawPointCloud(
       context.fillRect(x, y, 2, 2);
     }
   } else {
-    const radius = Math.min(width, height) * .3;
+    const radius = Math.min(width, height) * .28;
+    const wallHeight = radius * 1.5;
+    context.strokeStyle = 'rgba(96, 165, 250, .28)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.ellipse(centerX, centerY - wallHeight * .48, radius * .86, radius * .24, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.ellipse(centerX, centerY + wallHeight * .54, radius * .86, radius * .24, 0, 0, Math.PI * 2);
+    context.stroke();
     for (let index = 0; index < 4300; index += 1) {
       const angle = random() * Math.PI * 2;
-      const radial = .3 + random() * .7;
+      const radial = .88 + random() * .16;
       const vertical = random() - .5;
       const x3 = Math.cos(angle) * radius * radial;
-      const z3 = Math.sin(angle) * radius * radial * .65;
-      const y3 = vertical * radius * 1.25;
-      const depth = 18 + Math.sin(angle * 2) * 10 + Math.cos(angle * 3 + 1) * 7 + (vertical + .5) * 12 + (random() - .5) * 8;
+      const z3 = Math.sin(angle) * radius * radial * .35;
+      const y3 = vertical * wallHeight;
+      const scanBand = 1 - Math.min(1, Math.abs(vertical + .05) * 2.4);
+      const depth = 16 + Math.sin(angle * 2) * 7 + Math.cos(angle * 3 + 1) * 5 + scanBand * 15 + (random() - .5) * 7;
       context.fillStyle = pointColor(depth, thresholds);
-      context.fillRect(centerX + x3 * .87 - z3 * .87, centerY + y3 + x3 * .3 + z3 * .3, 2, 2);
+      context.fillRect(centerX + x3 * .87 - z3, centerY + y3 + x3 * .12 + z3, 2, 2);
     }
+    context.setLineDash([4, 5]);
+    context.strokeStyle = 'rgba(34, 211, 238, .55)';
+    context.beginPath();
+    context.ellipse(centerX, centerY + wallHeight * .04, radius * .88, radius * .25, 0, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = 'rgba(103, 232, 249, .84)';
+    context.font = '600 11px var(--font-mono)';
+    context.fillText('渣线扫描带', centerX - 30, centerY + wallHeight * .04 - 12);
   }
 
   context.setLineDash([5, 5]);
@@ -184,9 +205,7 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
   const [progress, setProgress] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
   const [scanVersion, setScanVersion] = useState(0);
-  const [safeThreshold, setSafeThreshold] = useState(30);
-  const [dangerThreshold, setDangerThreshold] = useState(50);
-  const thresholds = useMemo(() => ({ safe: safeThreshold, danger: dangerThreshold }), [dangerThreshold, safeThreshold]);
+  const thresholds = DEFAULT_SLAG_LINE_THRESHOLDS;
   const packageIndex = ladleIds.indexOf(selectedLadleId);
   const currentRecords = records[selectedLadleId];
   const latestRecord = currentRecords[0];
@@ -234,26 +253,35 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
   const ratingStyles: Record<Rating, string> = { safe: styles.safe, warning: styles.warning, danger: styles.danger };
   const latestRating = ratingForDepth(latestRecord.depth, thresholds);
   const latestTone = ratingStyles[latestRating];
-  const warningY = 148 - (safeThreshold / 65) * 122;
-  const dangerY = 148 - (dangerThreshold / 65) * 122;
+  const warningY = 148 - (thresholds.safe / 65) * 122;
+  const dangerY = 148 - (thresholds.danger / 65) * 122;
 
   return (
     <section className={styles.shell} aria-label="雷达渣线监测">
-      <header className={styles.topBar}>
-        <button type="button" className={styles.backButton} onClick={onBack}>
-          <ArrowLeft size={18} aria-hidden="true" /> 返回监测方式
-        </button>
-        <div className={styles.titleBlock}>
-          <div><Radar size={17} aria-hidden="true" /><h2>渣线雷达探测</h2><span>智能监测版</span></div>
-          <p>{wincc.location} · 双雷达点云分析 · 演示数据</p>
+      <header className={`${styles.topBar} ${workspaceStyles.topBar}`}>
+        <div className={workspaceStyles.topBarInner}>
+          <button type="button" className={styles.backButton} onClick={onBack}>
+            <ArrowLeft size={18} aria-hidden="true" /> 返回监测方式
+          </button>
+          <div className={styles.titleBlock}>
+            <div><Radar size={17} aria-hidden="true" /><h2>渣线雷达探测</h2><span>在线监测</span></div>
+            <p>{wincc.location} · 双雷达点云分析 · 演示数据</p>
+          </div>
+          <span className={styles.running}><i /> 双雷达在线</span>
         </div>
-        <span className={styles.running}><i /> 双雷达在线</span>
       </header>
 
-      <main className={styles.workspace}>
+      <main className={`${styles.workspace} ${workspaceStyles.workspace}`}>
         <div className={styles.alert}>
           <CheckCircle2 size={17} aria-hidden="true" />
           双雷达协同扫描：LR-01（左侧）+ LR-02（右侧）= 360°全覆盖　|　RH-LR1540　|　905nm激光　|　测距精度 ±10mm　|　100Hz 帧率
+        </div>
+
+        <div className={styles.sectionLabel}><Radar size={14} aria-hidden="true" /> 雷达设备状态</div>
+        <div className={styles.deviceStatus}>
+          <div><span className={styles.deviceLive}><i /> LR-01</span><p>左侧扫描单元 · 905nm 激光</p><b>100 <small>Hz</small></b><em>270° 扫描角</em></div>
+          <div><span className={styles.deviceLive}><i /> LR-02</span><p>右侧扫描单元 · 905nm 激光</p><b>100 <small>Hz</small></b><em>270° 扫描角</em></div>
+          <div><span className={styles.deviceLive}><i /> FUSION</span><p>双雷达数据融合状态</p><b>360<small>°</small></b><em>覆盖完整</em></div>
         </div>
 
         <div className={styles.grid}>
@@ -313,15 +341,6 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
         </div>
 
         <section className={styles.bottomGrid}>
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}><div><h3>渣线深度阈值</h3><p>变更阈值后将用于后续检测自动评级</p></div></div>
-            <div className={styles.thresholds}>
-              <label className={styles.safe}><span>安全级</span><b>&lt; {safeThreshold} mm</b><input type="range" min="10" max="45" value={safeThreshold} onChange={(event) => setSafeThreshold(Math.min(dangerThreshold - 1, Number(event.target.value)))} /></label>
-              <label className={styles.warning}><span>预警级</span><b>{safeThreshold} — {dangerThreshold} mm</b><small>介于安全与危险阈值之间</small></label>
-              <label className={styles.danger}><span>危险级</span><b>&gt; {dangerThreshold} mm</b><input type="range" min="35" max="80" value={dangerThreshold} onChange={(event) => setDangerThreshold(Math.max(safeThreshold + 1, Number(event.target.value)))} /></label>
-            </div>
-          </section>
-
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>当前检测结论</h3><p>最新一次检测结果 · {selectedLadleId}</p></div><TriangleAlert size={18} color={latestRating === 'safe' ? '#34d399' : '#fbbf24'} /></div>
             <div className={styles.summary}><div><span>最大深度</span><b>{latestRecord.depth} mm</b></div><div><span>异常区域</span><b>{latestRecord.defects} 处</b></div><div><span>综合评级</span><b className={latestTone}>{ratingName(latestRating)}</b></div><div><span>设备在线率</span><b className={styles.safe}>100%</b></div></div>

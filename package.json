@@ -11,8 +11,15 @@
     "prebuild": "node scripts/ensure-tailwind-resolve.mjs",
     "build": "next build",
     "build:trough": "NEXT_PUBLIC_PRODUCT_MODE=trough next build",
+    "build:trough:local-backend": "NEXT_PUBLIC_PRODUCT_MODE=trough NEXT_PUBLIC_API_MOCK_MODE=off NEXT_PUBLIC_API_BASE_URL=/api NEXT_PUBLIC_WS_BASE_URL= next build",
     "build:ladle-recognition": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition next build",
+    "docker:build": "npm run build && docker build -t wincc:latest .",
+    "docker:build:trough": "npm run build:trough && docker build -t wincc:trough .",
+    "docker:build:trough:local-backend": "npm run build:trough:local-backend && docker build -t wincc:trough-local-backend .",
+    "docker:build:ladle-recognition": "npm run build:ladle-recognition && docker build -t wincc:ladle-recognition .",
+    "docker:run": "docker run --rm -p 3001:8080 wincc:latest",
     "start": "node scripts/serve-static.mjs",
+    "test:e2e:api": "node scripts/e2e-api-smoke.mjs",
     "lint": "eslint"
   },
   "dependencies": {
@@ -39,6 +46,8 @@
     "@types/three": "^0.184.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "playwright": "^1.58.2",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

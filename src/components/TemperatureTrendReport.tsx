@@ -26,8 +26,6 @@ import {
   theme,
 } from 'antd';
 import {
-  apiMockMode,
-  apiMockModeLabel,
   buildApiUrl,
   canUseMockData,
   isMockOnly,
@@ -70,12 +68,6 @@ interface EChartTooltipParam {
   dataIndex?: number;
   axisValue?: string | number;
 }
-
-const REPORT_LOCATIONS: ReportLocation[] = [
-  { id: 'loc_2', name: '位置2' },
-  { id: 'loc_1', name: '位置1' },
-  { id: 'loc_3', name: '位置3' },
-];
 
 const PERIOD_OPTIONS = [1, 2, 5, 10, 30, 60, 120, 360];
 
@@ -137,14 +129,36 @@ const DOCUMENTED_TREND_ROWS = [
   },
 ];
 
-const createDefaultFilters = (): ReportFilters => {
+const DEFAULT_LIVE_RANGE = QUICK_RANGES[0];
+
+const createLiveDefaultFilters = (): ReportFilters => {
+  const endTime = new Date();
+  endTime.setSeconds(0, 0);
+  const startTime = new Date(endTime.getTime() - DEFAULT_LIVE_RANGE.minutes * 60000);
+
   return {
     locationId: DOCUMENTED_TREND_QUERY.locationId,
     locationName: DOCUMENTED_TREND_QUERY.locationName,
-    startTime: new Date(DOCUMENTED_TREND_QUERY.startTime),
-    endTime: new Date(DOCUMENTED_TREND_QUERY.endTime),
-    periodMinutes: DOCUMENTED_TREND_QUERY.periodMinutes,
+    startTime,
+    endTime,
+    periodMinutes: DEFAULT_LIVE_RANGE.periodMinutes,
   };
+};
+
+const createDefaultFilters = (): ReportFilters => {
+  // Local mock keeps the documented sample query so bundled rows can render.
+  // Deploy / real API mode queries a recent window and renders whatever /temperature/trend returns.
+  if (isMockOnly) {
+    return {
+      locationId: DOCUMENTED_TREND_QUERY.locationId,
+      locationName: DOCUMENTED_TREND_QUERY.locationName,
+      startTime: new Date(DOCUMENTED_TREND_QUERY.startTime),
+      endTime: new Date(DOCUMENTED_TREND_QUERY.endTime),
+      periodMinutes: DOCUMENTED_TREND_QUERY.periodMinutes,
+    };
+  }
+
+  return createLiveDefaultFilters();
 };
 
 const getRangeLabel = (filters: ReportFilters) => {
@@ -215,6 +229,24 @@ const normalizeTrendRows = (rows: TemperatureTrendPoint[]) => {
   });
 };
 
+const mergeReportLocations = (...groups: ReportLocation[][]): ReportLocation[] => {
+  const locations = new Map<string, ReportLocation>();
+
+  groups.flat().forEach((location) => {
+    if (location.id.trim() && location.name.trim()) {
+      locations.set(location.id, location);
+    }
+  });
+
+  return Array.from(locations.values());
+};
+
+const getReportLocations = (rows: TemperatureTrendPoint[]): ReportLocation[] => {
+  return mergeReportLocations(
+    rows.map((row) => ({ id: row.locationId, name: row.locationName }))
+  );
+};
+
 const buildTemperatureTrendUrl = (filters: ReportFilters) => {
   return buildApiUrl('/temperature/trend', {
     locationId: filters.locationId,
@@ -240,29 +272,6 @@ const queryDocumentTrendData = (filters: ReportFilters): TemperatureTrendPoint[]
       id: `${row.locationId}-${row.statTime}`,
       timestamp,
       ...row,
-    };
-  });
-
-  const start = filters.startTime.getTime();
-  const end = filters.endTime.getTime();
-  const step = Math.max(filters.periodMinutes * 60000, 60000);
-  const pointCount = Math.max(4, Math.min(180, Math.floor((end - start) / step) + 1));
-  const actualStep = pointCount > 1 ? (end - start) / (pointCount - 1) : step;
-  const locationShift = filters.locationId.endsWith('1') ? -0.55 : filters.locationId.endsWith('3') ? 0.42 : 0;
-
-  return Array.from({ length: pointCount }, (_, index) => {
-    const timestamp = start + actualStep * index;
-    const date = new Date(timestamp);
-    const wave = Math.sin(index * 0.68) * 0.34 + Math.sin(index * 0.17 + 1.6) * 0.22;
-    const avgTemperature = Math.max(16, Math.min(24, 18.8 + locationShift + wave));
-
-    return {
-      id: `${filters.locationId}-${timestamp}-${index}`,
-      timestamp,
-      statTime: formatApiDateTime(date),
-      locationId: filters.locationId,
-      locationName: filters.locationName,
-      avgTemperature: Number(avgTemperature.toFixed(3)),
     };
   });
 };
@@ -359,7 +368,9 @@ function TemperatureEChart({ option, label }: TemperatureChartProps) {
 export default function TemperatureTrendReport() {
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [activeFilters, setActiveFilters] = useState<ReportFilters>(() => createDefaultFilters());
+  const [queryVersion, setQueryVersion] = useState(0);
   const [data, setData] = useState<TemperatureTrendPoint[]>([]);
+  const [reportLocations, setReportLocations] = useState<ReportLocation[]>([]);
   const [queryStatus, setQueryStatus] = useState<QueryStatus>('idle');
   const [queryMessage, setQueryMessage] = useState('');
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -371,6 +382,22 @@ export default function TemperatureTrendReport() {
   const summary = useMemo(() => getSummary(data), [data]);
   const latestRows = useMemo(() => [...data].slice(-6).reverse(), [data]);
   const latestPoint = data[data.length - 1];
+  const activeLocationName = useMemo(() => {
+    return data.find((point) => point.locationId === activeFilters.locationId)?.locationName
+      ?? reportLocations.find((location) => location.id === activeFilters.locationId)?.name
+      ?? activeFilters.locationName;
+  }, [activeFilters.locationId, activeFilters.locationName, data, reportLocations]);
+  const availableLocations = useMemo(() => {
+    const draftLocation = reportLocations.find((location) => location.id === draftFilters.locationId);
+
+    return mergeReportLocations(
+      reportLocations,
+      [{
+        id: draftFilters.locationId,
+        name: draftLocation?.name ?? draftFilters.locationName,
+      }]
+    );
+  }, [draftFilters.locationId, draftFilters.locationName, reportLocations]);
   const isInvalidRange = draftFilters.startTime >= draftFilters.endTime;
   const isActiveRangeInvalid = activeFilters.startTime >= activeFilters.endTime;
   const queryWindow = `${formatApiDateTime(activeFilters.startTime)} 至 ${formatApiDateTime(activeFilters.endTime)}`;
@@ -378,14 +405,14 @@ export default function TemperatureTrendReport() {
   const queryStatusText = queryStatus === 'loading'
     ? '查询中'
     : queryStatus === 'success'
-      ? '接口数据'
+      ? '已加载'
       : queryStatus === 'mock'
-        ? apiMockModeLabel.mock
+        ? '演示数据'
         : queryStatus === 'fallback'
-          ? '接口失败 · 样例'
+          ? '备用数据'
           : queryStatus === 'error'
-            ? '接口失败'
-            : apiMockModeLabel[apiMockMode];
+            ? '加载失败'
+            : '待查询';
 
   const tableColumns = useMemo<TableColumnsType<TemperatureTrendPoint>>(
     () => [
@@ -438,7 +465,7 @@ export default function TemperatureTrendReport() {
           type: 'line',
           lineStyle: { color: 'rgba(22,119,255,0.34)', width: 1 },
         },
-        formatter: (params: unknown) => formatTemperatureTooltip(params, data, activeFilters.locationName),
+        formatter: (params: unknown) => formatTemperatureTooltip(params, data, activeLocationName),
       },
       grid: { left: 50, right: 24, top: 24, bottom: 30 },
       xAxis: {
@@ -511,7 +538,7 @@ export default function TemperatureTrendReport() {
         },
       ],
     };
-  }, [activeFilters, data, prefersReducedMotion, summary.avg]);
+  }, [activeFilters, activeLocationName, data, prefersReducedMotion, summary.avg]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -534,7 +561,9 @@ export default function TemperatureTrendReport() {
       }
 
       if (isMockOnly) {
-        setData(queryDocumentTrendData(activeFilters));
+        const rows = queryDocumentTrendData(activeFilters);
+        setData(rows);
+        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
         setQueryStatus('mock');
         setQueryMessage('');
         return;
@@ -555,30 +584,42 @@ export default function TemperatureTrendReport() {
         }
 
         const payload = await response.json() as unknown;
-        setData(normalizeTrendRows(pickTrendRows(payload)));
+        const rows = normalizeTrendRows(pickTrendRows(payload));
+        setData(rows);
+        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
         setQueryStatus('success');
       } catch (error) {
         if (controller.signal.aborted) return;
 
-        setData(canUseMockData ? queryDocumentTrendData(activeFilters) : []);
+        const rows = canUseMockData ? queryDocumentTrendData(activeFilters) : [];
+        setData(rows);
+        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
         setQueryStatus(canUseMockData ? 'fallback' : 'error');
-        setQueryMessage(error instanceof Error ? error.message : '接口请求失败');
+        setQueryMessage(canUseMockData ? '数据加载异常，已展示备用数据' : '加载失败，请稍后重试');
       }
     }
 
     loadTrendData();
 
     return () => controller.abort();
-  }, [activeFilters, isActiveRangeInvalid]);
+  }, [activeFilters, isActiveRangeInvalid, queryVersion]);
 
   const updateLocation = (locationId: string) => {
-    const location = REPORT_LOCATIONS.find((item) => item.id === locationId) ?? REPORT_LOCATIONS[0];
+    const location = availableLocations.find((item) => item.id === locationId);
+    if (!location) return;
+
     setDraftFilters((current) => ({
       ...current,
       locationId: location.id,
       locationName: location.name,
     }));
   };
+
+  const cloneFilters = (filters: ReportFilters): ReportFilters => ({
+    ...filters,
+    startTime: new Date(filters.startTime),
+    endTime: new Date(filters.endTime),
+  });
 
   const applyQuickRange = (label: string | number) => {
     const range = QUICK_RANGES.find((item) => item.label === label);
@@ -594,15 +635,19 @@ export default function TemperatureTrendReport() {
       periodMinutes: range.periodMinutes,
     };
 
+    // Keep draft/active as distinct objects so a later「查询」is never a React no-op.
     setDraftFilters(nextFilters);
-    setActiveFilters(nextFilters);
+    setActiveFilters(cloneFilters(nextFilters));
+    setQueryVersion((current) => current + 1);
   };
 
   const submitFilters = () => {
     if (isInvalidRange) {
       return;
     }
-    setActiveFilters(draftFilters);
+    // Always clone + bump version so identical filters still re-hit /temperature/trend.
+    setActiveFilters(cloneFilters(draftFilters));
+    setQueryVersion((current) => current + 1);
   };
 
   return (
@@ -644,7 +689,7 @@ export default function TemperatureTrendReport() {
           <div className="query-head">
             <div>
               <h2>温度趋势</h2>
-              <p>{activeFilters.locationName} · {rangeLabel} · {samplingLabel} · {queryStatusText}</p>
+              <p>{activeLocationName} · {rangeLabel} · {samplingLabel} · {queryStatusText}</p>
             </div>
             <div className="quick-row">
               <span>常用范围</span>
@@ -662,7 +707,7 @@ export default function TemperatureTrendReport() {
                 <Form.Item label="位置">
                   <Select
                     value={draftFilters.locationId}
-                    options={REPORT_LOCATIONS.map((location) => ({
+                    options={availableLocations.map((location) => ({
                       value: location.id,
                       label: location.name,
                     }))}
@@ -740,7 +785,7 @@ export default function TemperatureTrendReport() {
             <Alert
               showIcon
               type={queryStatus === 'error' ? 'error' : 'warning'}
-              message={queryStatus === 'fallback' ? `接口未连通，当前展示文档样例数据：${queryMessage}` : queryMessage}
+              message={queryMessage}
             />
           )}
         </div>
@@ -794,7 +839,7 @@ export default function TemperatureTrendReport() {
               title={
                 <div className="chart-title">
                   <span>平均温度趋势</span>
-                  <small>{activeFilters.locationName} · {rangeLabel} · {samplingLabel}</small>
+                  <small>{activeLocationName} · {rangeLabel} · {samplingLabel}</small>
                 </div>
               }
               extra={<span className="chart-extra">{data.length} 点</span>}
@@ -802,14 +847,14 @@ export default function TemperatureTrendReport() {
               <div
                 className="chart-frame"
                 role="img"
-                aria-label={`${activeFilters.locationName}${rangeLabel}平均温度趋势，最新均温 ${summary.latest.toFixed(
+                aria-label={`${activeLocationName}${rangeLabel}平均温度趋势，最新均温 ${summary.latest.toFixed(
                   2
                 )} 摄氏度，平均温度 ${summary.avg.toFixed(2)} 摄氏度`}
               >
                 {data.length > 0 ? (
                   <TemperatureEChart
                     option={chartOption}
-                    label={`${activeFilters.locationName}${rangeLabel}平均温度趋势，最新均温 ${summary.latest.toFixed(
+                    label={`${activeLocationName}${rangeLabel}平均温度趋势，最新均温 ${summary.latest.toFixed(
                       2
                     )} 摄氏度，平均温度 ${summary.avg.toFixed(2)} 摄氏度`}
                   />
@@ -829,7 +874,7 @@ export default function TemperatureTrendReport() {
                   size="small"
                   colon={false}
                   items={[
-                    { key: 'location', label: '位置', children: activeFilters.locationName },
+                    { key: 'location', label: '位置', children: activeLocationName },
                     { key: 'time', label: '时间', children: queryWindow },
                     { key: 'period', label: '周期', children: samplingLabel },
                   ]}

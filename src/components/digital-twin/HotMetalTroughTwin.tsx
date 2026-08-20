@@ -26,7 +26,7 @@ const BlastFurnaceScene = dynamic<BlastFurnaceSceneProps>(() => import('./BlastF
   loading: () => (
     <div className={styles.sceneLoading} role="status" aria-live="polite">
       <div className={styles.loadingMark} />
-      <span>正在加载 CAD 数字孪生模型</span>
+      <span>正在加载数字孪生模型</span>
     </div>
   ),
 });
@@ -45,11 +45,11 @@ const statusLabels = {
 } as const;
 
 const modbusFeedLabels = {
-  mock: 'Mock 推送',
-  connecting: 'WS 连接中',
-  connected: 'WS 实时',
-  fallback: 'WS 回退 Mock',
-  error: 'WS 异常',
+  mock: '演示推送',
+  connecting: '连接中',
+  connected: '实时数据',
+  fallback: '备用数据',
+  error: '推送异常',
   retrying: '重连中',
 } as const;
 
@@ -171,9 +171,8 @@ export default function HotMetalTroughTwin({ wincc, onBack }: HotMetalTroughTwin
         </button>
 
         <div className={styles.titleBlock}>
-          <span className={styles.eyebrow}>HOT METAL TROUGH DIGITAL TWIN</span>
           <h1>{wincc.name}</h1>
-          <p>{wincc.location} / CAD: langan.glb</p>
+          <p>{wincc.location} · 三维模型联动测点温度</p>
         </div>
 
         <div className={`${styles.statusPill} ${styles[statusInfo.tone]}`}>
@@ -192,7 +191,10 @@ export default function HotMetalTroughTwin({ wincc, onBack }: HotMetalTroughTwin
             <SystemRow label="设备名称" value={wincc.name} />
             <SystemRow label="所在区域" value={wincc.location} />
             <SystemRow label="控制地址" value={wincc.ipAddress ?? '--'} />
-            <SystemRow label="资产状态" value={wincc.status === 'online' ? '在线' : wincc.status} />
+            <SystemRow
+              label="资产状态"
+              value={wincc.status === 'online' ? '在线' : wincc.status === 'maintenance' ? '维护中' : '离线'}
+            />
           </div>
 
           <div className={styles.panelSection}>
@@ -228,7 +230,7 @@ export default function HotMetalTroughTwin({ wincc, onBack }: HotMetalTroughTwin
           />
           <div className={styles.sceneCaption}>
             <span>模型视图</span>
-            <strong>GLB CAD 原始模型 · {modbusPoint?.locationName ?? '等待点位'}</strong>
+            <strong>主沟三维模型 · {modbusPoint?.locationName ?? '等待点位'}</strong>
           </div>
           <div className={styles.controlHint} aria-label="三维模型操作提示">
             <span>
@@ -243,9 +245,9 @@ export default function HotMetalTroughTwin({ wincc, onBack }: HotMetalTroughTwin
         </main>
 
         <aside className={styles.rightPanel} aria-label="实时指标">
-          <div className={styles.livePointCard} data-status={livePointCardStatus} aria-label="WS 点位温度">
+          <div className={styles.livePointCard} data-status={livePointCardStatus} aria-label="点位温度">
             <div className={styles.livePointHeader}>
-              <span>WS 点位</span>
+              <span>点位温度</span>
               <strong>{livePointCardLabel}</strong>
             </div>
             <div className={styles.livePointValue}>

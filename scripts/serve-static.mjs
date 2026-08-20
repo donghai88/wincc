@@ -1,9 +1,10 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, request as requestToBackend } from 'node:http';
 import { extname, isAbsolute, normalize, relative, resolve } from 'node:path';
 
 const root = resolve('out');
 const port = Number(process.env.PORT ?? 3001);
+const backendUrl = new URL(process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080');
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -25,13 +26,60 @@ if (!existsSync(root)) {
   process.exit(1);
 }
 
-createServer((request, response) => {
+const getProxyPath = (requestUrl) => {
+  const { pathname, search } = new URL(requestUrl ?? '/', 'http://localhost');
+  return pathname.startsWith('/api/') ? `${pathname.slice(4)}${search}` : `${pathname}${search}`;
+};
+
+const isProxyPath = (pathname) => pathname.startsWith('/api/') || pathname.startsWith('/ws/');
+
+const getProxyOptions = (request) => ({
+  hostname: backendUrl.hostname,
+  port: backendUrl.port || 80,
+  protocol: backendUrl.protocol,
+  method: request.method,
+  path: getProxyPath(request.url),
+  headers: {
+    ...request.headers,
+    host: backendUrl.host,
+  },
+});
+
+const proxyHttpRequest = (request, response) => {
+  const backendRequest = requestToBackend(getProxyOptions(request), (backendResponse) => {
+    response.writeHead(backendResponse.statusCode ?? 502, backendResponse.headers);
+    backendResponse.pipe(response);
+  });
+
+  backendRequest.on('error', (error) => {
+    console.error(`[proxy] ${request.method} ${request.url} -> ${error.message}`);
+    if (!response.headersSent) {
+      response.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    response.end('Bad Gateway');
+  });
+
+  request.pipe(backendRequest);
+};
+
+const server = createServer((request, response) => {
+  const startedAt = Date.now();
+  response.once('finish', () => {
+    console.log(`[access] ${request.method} ${request.url} ${response.statusCode} ${Date.now() - startedAt}ms`);
+  });
+
+  const pathname = decodeURIComponent(new URL(request.url ?? '/', `http://${request.headers.host}`).pathname);
+
+  if (isProxyPath(pathname)) {
+    proxyHttpRequest(request, response);
+    return;
+  }
+
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     response.writeHead(405, { Allow: 'GET, HEAD' }).end();
     return;
   }
 
-  const pathname = decodeURIComponent(new URL(request.url ?? '/', `http://${request.headers.host}`).pathname);
   const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   let filePath = resolve(root, normalize(relativePath));
 
@@ -62,6 +110,43 @@ createServer((request, response) => {
     return;
   }
   createReadStream(filePath).pipe(response);
-}).listen(port, '0.0.0.0', () => {
+});
+
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+
+  if (!pathname.startsWith('/ws/')) {
+    socket.destroy();
+    return;
+  }
+
+  const backendRequest = requestToBackend(getProxyOptions(request));
+
+  backendRequest.on('upgrade', (backendResponse, backendSocket, backendHead) => {
+    const statusLine = `HTTP/${backendResponse.httpVersion} ${backendResponse.statusCode} ${backendResponse.statusMessage}`;
+    const headers = Object.entries(backendResponse.headers)
+      .flatMap(([name, value]) => Array.isArray(value)
+        ? value.map((item) => `${name}: ${item}`)
+        : value === undefined ? [] : [`${name}: ${value}`]);
+
+    socket.write(`${[statusLine, ...headers].join('\r\n')}\r\n\r\n`);
+    if (backendHead.length) socket.write(backendHead);
+    if (head.length) backendSocket.write(head);
+
+    console.log(`[ws] connected ${request.url}`);
+    backendSocket.pipe(socket);
+    socket.pipe(backendSocket);
+  });
+
+  backendRequest.on('error', (error) => {
+    console.error(`[proxy] WebSocket ${request.url} -> ${error.message}`);
+    socket.destroy();
+  });
+
+  backendRequest.end();
+});
+
+server.listen(port, '0.0.0.0', () => {
   console.log(`演示服务已启动：http://127.0.0.1:${port}`);
+  console.log(`接口代理目标：${backendUrl.origin}`);
 });

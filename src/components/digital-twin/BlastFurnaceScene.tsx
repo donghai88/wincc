@@ -189,7 +189,7 @@ function SceneLoader() {
           backdropFilter: 'blur(10px)',
         }}
       >
-        加载 GLB CAD 模型...
+        正在加载三维模型...
       </div>
     </Html>
   );

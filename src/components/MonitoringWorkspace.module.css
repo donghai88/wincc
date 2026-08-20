@@ -1,0 +1,39 @@
+.topBar {
+  position: relative;
+  z-index: 3;
+  border-bottom: 1px solid rgba(151, 178, 210, .16);
+  background: rgba(3, 6, 10, .72);
+  backdrop-filter: blur(18px);
+}
+
+.topBarInner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--monitor-toolbar-top) var(--monitor-toolbar-x) var(--monitor-toolbar-bottom);
+}
+
+.workspace {
+  width: 100%;
+  padding: var(--monitor-workspace-top) var(--monitor-workspace-x) var(--monitor-workspace-bottom);
+}
+
+@media (max-width: 760px) {
+  .topBarInner {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-3) var(--monitor-gutter-mobile);
+  }
+
+  .topBarInner > :last-child {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 680px) {
+  .workspace {
+    padding: var(--space-3) var(--monitor-gutter-mobile) var(--space-5);
+  }
+}

@@ -5,16 +5,13 @@ import {
   Alert,
   Button,
   Card,
-  Collapse,
   ConfigProvider,
-  Descriptions,
   Flex,
   Form,
   Space,
   Statistic,
   Table,
   Tag,
-  Tooltip,
   Typography,
   theme,
 } from 'antd';
@@ -31,7 +28,6 @@ import type { ColumnsType } from 'antd/es/table';
 import AntdStyleRegistry from '@/components/AntdStyleRegistry';
 import { AppDatePicker } from '@/components/AppDatePicker';
 import {
-  apiMockModeLabel,
   buildApiUrl,
   canUseMockData,
   isMockOnly,
@@ -189,9 +185,11 @@ const requireString = (row: WeeklyReportApiRow, key: keyof WeeklyReportApiRow) =
   throw new Error(`接口返回缺少字段 ${key}`);
 };
 
-const requireNumber = (row: WeeklyReportApiRow, key: keyof WeeklyReportApiRow) => {
-  const value = row[key];
+const coerceNumber = (value: unknown, key: keyof WeeklyReportApiRow) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
   throw new Error(`接口返回缺少字段 ${key}`);
 };
 
@@ -204,13 +202,13 @@ const pickRows = (payload: unknown): WeeklyReportApiRow[] => {
 const normalizeRows = (rows: WeeklyReportApiRow[]): WeeklyReportRow[] => {
   return rows.map((row) => {
     return {
-      id: String(requireNumber(row, 'id')),
+      id: String(coerceNumber(row.id, 'id')),
       locationId: requireString(row, 'locationId'),
       locationName: requireString(row, 'locationName'),
-      avgTemperature: requireNumber(row, 'avgTemperature'),
-      maxTemperature: requireNumber(row, 'maxTemperature'),
-      level1AlarmCount: requireNumber(row, 'level1AlarmCount'),
-      level2AlarmCount: requireNumber(row, 'level2AlarmCount'),
+      avgTemperature: coerceNumber(row.avgTemperature, 'avgTemperature'),
+      maxTemperature: coerceNumber(row.maxTemperature, 'maxTemperature'),
+      level1AlarmCount: coerceNumber(row.level1AlarmCount, 'level1AlarmCount'),
+      level2AlarmCount: coerceNumber(row.level2AlarmCount, 'level2AlarmCount'),
       dataStartDate: requireString(row, 'dataStartDate'),
       dataEndDate: requireString(row, 'dataEndDate'),
       weekStartDate: requireString(row, 'weekStartDate'),
@@ -254,6 +252,11 @@ const getFilenameFromDisposition = (disposition: string | null) => {
   return filenameMatch?.[1] ?? null;
 };
 
+const isRejectedDownloadContentType = (contentType: string) => {
+  const normalized = contentType.toLowerCase();
+  return normalized.includes('application/json') || normalized.includes('text/html');
+};
+
 const triggerBlobDownload = (blob: Blob, filename: string) => {
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -262,7 +265,8 @@ const triggerBlobDownload = (blob: Blob, filename: string) => {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(objectUrl);
+  // Delay revoke: some browsers cancel the download if the object URL is revoked immediately.
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 };
 
 export default function WeeklyReportQuery() {
@@ -270,44 +274,20 @@ export default function WeeklyReportQuery() {
   const [form] = Form.useForm<WeeklyReportFormValues>();
   const [draftWeekMonday, setDraftWeekMonday] = useState(defaultWeek);
   const [activeWeekMonday, setActiveWeekMonday] = useState(defaultWeek);
+  const [queryVersion, setQueryVersion] = useState(0);
   const [rows, setRows] = useState<WeeklyReportRow[]>([]);
   const [status, setStatus] = useState<QueryStatus>('idle');
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>('idle');
   const [message, setMessage] = useState('');
   const [downloadMessage, setDownloadMessage] = useState('');
-  const [lastQueryUrl, setLastQueryUrl] = useState('');
-  const [lastDownloadUrl, setLastDownloadUrl] = useState('');
 
   const summary = useMemo(() => getSummary(rows), [rows]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(activeWeekMonday), [activeWeekMonday]);
   const tableRows = rows;
 
   const isLoading = status === 'loading';
-  const isMock = status === 'mock';
-  const isFallback = status === 'fallback';
   const isError = status === 'error';
-  const hasMockRows = (isMock || isFallback) && rows.length > 0;
   const isDownloading = downloadStatus === 'loading';
-  const queryStatusLabel = isLoading
-    ? '查询中'
-    : isMock
-      ? apiMockModeLabel.mock
-      : isFallback
-        ? '接口失败 · 样例'
-        : isError
-          ? '接口失败'
-          : status === 'success'
-            ? '接口数据'
-            : '待查询';
-  const queryTagColor = isLoading
-    ? 'processing'
-    : isMock || isFallback
-      ? 'gold'
-      : isError
-        ? 'red'
-        : status === 'success'
-          ? 'green'
-          : 'default';
   const alarmTagColor = summary.totalLevel1 > 0 ? 'red' : summary.totalAlarms > 0 ? 'gold' : 'green';
 
   useEffect(() => {
@@ -318,7 +298,6 @@ export default function WeeklyReportQuery() {
       setMessage('');
 
       const requestUrl = buildWeeklyReportUrl('query', activeWeekMonday);
-      setLastQueryUrl(requestUrl.pathname + requestUrl.search);
 
       if (isMockOnly) {
         setRows(createFallbackRows(activeWeekMonday));
@@ -348,25 +327,26 @@ export default function WeeklyReportQuery() {
         const fallbackRows = canUseMockData ? createFallbackRows(activeWeekMonday) : [];
         setRows(fallbackRows);
         setStatus(canUseMockData ? 'fallback' : 'error');
-        setMessage(error instanceof Error ? error.message : '接口请求失败');
+        setMessage(canUseMockData ? '数据加载异常，已展示备用数据' : '加载失败，请稍后重试');
       }
     }
 
     loadWeeklyReport();
 
     return () => controller.abort();
-  }, [activeWeekMonday]);
+  }, [activeWeekMonday, queryVersion]);
 
   const submitQuery = (values?: WeeklyReportFormValues) => {
     const formValue = values?.weekMonday?.format('YYYY-MM-DD') ?? draftWeekMonday;
     const normalized = normalizeWeekMonday(formValue);
     if (!normalized) {
-      setMessage('weekMonday 必须是自然周周一日期');
+      setMessage('请选择自然周周一日期');
       return;
     }
 
     setDraftWeekMonday(normalized);
     setActiveWeekMonday(normalized);
+    setQueryVersion((current) => current + 1);
     setDownloadStatus('idle');
     setDownloadMessage('');
   };
@@ -374,6 +354,7 @@ export default function WeeklyReportQuery() {
   const applyQuickWeek = (weekMonday: string) => {
     setDraftWeekMonday(weekMonday);
     setActiveWeekMonday(weekMonday);
+    setQueryVersion((current) => current + 1);
     setDownloadStatus('idle');
     setDownloadMessage('');
     form.setFieldsValue({ weekMonday: dayjs(weekMonday) });
@@ -383,13 +364,22 @@ export default function WeeklyReportQuery() {
     setDownloadStatus('loading');
     setDownloadMessage('');
 
-    const requestUrl = buildWeeklyReportUrl('download', activeWeekMonday);
-    const requestPath = requestUrl.pathname + requestUrl.search;
-    setLastDownloadUrl(requestPath);
+    const formWeek = form.getFieldValue('weekMonday')?.format('YYYY-MM-DD') ?? draftWeekMonday;
+    const weekMonday = normalizeWeekMonday(formWeek);
+    if (!weekMonday) {
+      setDownloadStatus('error');
+      setDownloadMessage('请选择自然周周一后再下载');
+      return;
+    }
+
+    setDraftWeekMonday(weekMonday);
+    setActiveWeekMonday(weekMonday);
+
+    const requestUrl = buildWeeklyReportUrl('download', weekMonday);
 
     if (isMockOnly) {
       setDownloadStatus('error');
-      setDownloadMessage('Mock 模式不提供真实下载流，请切换 NEXT_PUBLIC_API_MOCK_MODE');
+      setDownloadMessage('当前环境暂不支持下载');
       return;
     }
 
@@ -397,7 +387,7 @@ export default function WeeklyReportQuery() {
       const response = await fetch(requestUrl, {
         method: 'GET',
         headers: {
-          Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream',
+          Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream,*/*',
         },
       });
 
@@ -406,21 +396,23 @@ export default function WeeklyReportQuery() {
       }
 
       const contentType = response.headers.get('content-type') ?? '';
-      const defaultFilename = `weekly-report-${activeWeekMonday}.xlsx`;
-
-      if (contentType.includes('application/json')) {
-        const text = await response.text();
-        throw new Error(`下载接口返回 JSON，但文档要求 http 流直接下载：${text.slice(0, 80)}`);
+      if (isRejectedDownloadContentType(contentType)) {
+        throw new Error('unexpected-content-type');
       }
 
-      const filename = getFilenameFromDisposition(response.headers.get('content-disposition')) ?? defaultFilename;
       const blob = await response.blob();
+      if (blob.size <= 0) {
+        throw new Error('empty-body');
+      }
+
+      const defaultFilename = `weekly-report-${weekMonday}.xlsx`;
+      const filename = getFilenameFromDisposition(response.headers.get('content-disposition')) ?? defaultFilename;
       triggerBlobDownload(blob, filename);
       setDownloadStatus('success');
-      setDownloadMessage('周报文件已下载');
-    } catch (error) {
+      setDownloadMessage('');
+    } catch {
       setDownloadStatus('error');
-      setDownloadMessage(error instanceof Error ? error.message : '下载失败');
+      setDownloadMessage('下载失败，请稍后重试');
     }
   };
 
@@ -485,17 +477,13 @@ export default function WeeklyReportQuery() {
     },
   ];
 
-  const alertContent = isMock
-    ? hasMockRows
-      ? '当前使用 Mock 模式，展示文档样例数据'
-      : `当前使用 Mock 模式，文档仅提供 ${DOCUMENTED_WEEK_MONDAY} 样例数据`
-    : status === 'fallback' && message
-    ? hasMockRows
-      ? `接口未连通，当前展示文档样例数据：${message}`
-      : `接口未连通，且文档仅提供 ${DOCUMENTED_WEEK_MONDAY} 样例数据：${message}`
-    : isError && message
-      ? `接口请求失败，Mock 已关闭：${message}`
-    : message || downloadMessage;
+  const alertContent = isError
+    ? message || '加载失败，请稍后重试'
+    : status === 'fallback'
+      ? message || '数据加载异常，已展示备用数据'
+      : status === 'success' && rows.length === 0
+        ? `${activeWeekMonday} 这一周暂无周报数据`
+        : downloadMessage;
 
   const downloadStatusText = isDownloading
     ? '生成中'
@@ -543,7 +531,6 @@ export default function WeeklyReportQuery() {
           )}
           extra={(
             <Space size={8} wrap>
-              <Tag color={queryTagColor}>{queryStatusLabel}</Tag>
               <Tag color={alarmTagColor}>{summary.totalAlarms} 次报警</Tag>
               <Button
                 type="primary"
@@ -616,7 +603,15 @@ export default function WeeklyReportQuery() {
             {alertContent && (
               <Alert
                 showIcon
-                type={status === 'fallback' || downloadStatus === 'error' ? 'warning' : 'success'}
+                type={
+                  status === 'fallback' || downloadStatus === 'error'
+                    ? 'warning'
+                    : status === 'success' && rows.length === 0
+                      ? 'info'
+                      : isError
+                        ? 'error'
+                        : 'success'
+                }
                 title={alertContent}
               />
             )}
@@ -678,49 +673,6 @@ export default function WeeklyReportQuery() {
                 ) : null
               )}
             />
-
-            <Collapse
-              ghost
-              size="small"
-              className="weekly-debug-collapse"
-              items={[
-                {
-                  key: 'api',
-                  label: '接口信息',
-                  children: (
-                    <Descriptions
-                      bordered
-                      size="small"
-                      column={1}
-                      items={[
-                        {
-                          key: 'query',
-                          label: '查询接口',
-                          children: (
-                            <Tooltip title={lastQueryUrl || '/weekly/report/query'}>
-                              <Text code copyable ellipsis className="weekly-endpoint">
-                                {lastQueryUrl || '/weekly/report/query'}
-                              </Text>
-                            </Tooltip>
-                          ),
-                        },
-                        {
-                          key: 'download',
-                          label: '下载接口',
-                          children: (
-                            <Tooltip title={lastDownloadUrl || `/weekly/report/download?weekMonday=${activeWeekMonday}`}>
-                              <Text code copyable ellipsis className="weekly-endpoint">
-                                {lastDownloadUrl || `/weekly/report/download?weekMonday=${activeWeekMonday}`}
-                              </Text>
-                            </Tooltip>
-                          ),
-                        },
-                      ]}
-                    />
-                  ),
-                },
-              ]}
-            />
           </Flex>
         </Card>
 
@@ -743,10 +695,6 @@ export default function WeeklyReportQuery() {
 
           .weekly-main-actions {
             margin-left: auto;
-          }
-
-          .weekly-endpoint {
-            max-width: 100%;
           }
 
           .weekly-summary-strip {
@@ -776,10 +724,6 @@ export default function WeeklyReportQuery() {
             flex-direction: column;
             justify-content: center;
             gap: 6px;
-          }
-
-          .weekly-debug-collapse {
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
           }
 
           @media (max-width: 980px) {

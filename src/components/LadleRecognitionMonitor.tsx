@@ -12,6 +12,7 @@ import {
   Thermometer,
 } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
+import workspaceStyles from './MonitoringWorkspace.module.css';
 import styles from './LadleRecognitionMonitor.module.css';
 
 interface LadleRecognitionMonitorProps {
@@ -231,30 +232,32 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
 
   return (
     <section className={styles.simShell} aria-label="钢包智能监测实时监控">
-      <header className={styles.topBar}>
-        <button className={styles.backButton} type="button" onClick={onBack} aria-label="返回设备类型总览">
-          <ArrowLeft size={18} aria-hidden="true" />
-          <span>返回</span>
-        </button>
+      <header className={`${styles.topBar} ${workspaceStyles.topBar}`}>
+        <div className={workspaceStyles.topBarInner}>
+          <button className={styles.backButton} type="button" onClick={onBack} aria-label="返回设备类型总览">
+            <ArrowLeft size={18} aria-hidden="true" />
+            <span>返回</span>
+          </button>
 
-        <div className={styles.titleBlock}>
-          <div className={styles.titleLine}>
-            <h1>{title}</h1>
-            <span className={styles.simBadge}>智能监测版</span>
+          <div className={styles.titleBlock}>
+            <div className={styles.titleLine}>
+              <h1>{title}</h1>
+              <span className={styles.simBadge}>智能监测版</span>
+            </div>
+            <p>{subtitle}</p>
           </div>
-          <p>{subtitle}</p>
-        </div>
 
-        <div className={styles.statusCluster}>
-          <span className={styles.statusPill}>系统运行中</span>
-          <span className={styles.clockPill}>
-            <Clock3 size={14} aria-hidden="true" />
-            {wincc?.lastUpdate ?? clock.toLocaleString('zh-CN', { hour12: false })}
-          </span>
+          <div className={styles.statusCluster}>
+            <span className={styles.statusPill}>系统运行中</span>
+            <span className={styles.clockPill}>
+              <Clock3 size={14} aria-hidden="true" />
+              {wincc?.lastUpdate ?? clock.toLocaleString('zh-CN', { hour12: false })}
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className={styles.workspace}>
+      <div className={`${styles.workspace} ${workspaceStyles.workspace}`}>
         <div className={styles.sectionLabel}>
           <ScanText size={13} aria-hidden="true" />
           DEVICE STATUS · 设备状态总览
@@ -306,7 +309,7 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
 
         <div className={styles.sectionLabel}>
           <Thermometer size={13} aria-hidden="true" />
-          LIVE THERMAL · 三路红外实时监控
+          三路红外实时监控
         </div>
         <div className={styles.cameraRow}>
           {feeds.map((feed) => (

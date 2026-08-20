@@ -12,10 +12,16 @@
 
 # testing
 /coverage
+/output/
 
 # next.js
 /.next/
 /out/
+**/out/
+**/.next/
+*.zip
+.playwright-cli/
+ruihai-trough-real-api-*/
 
 # production
 /build

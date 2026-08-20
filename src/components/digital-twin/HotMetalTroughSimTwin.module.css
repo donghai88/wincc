@@ -55,16 +55,6 @@
 }
 
 .topBar {
-  position: relative;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--sim-border);
-  background: rgba(3, 6, 10, 0.72);
-  backdrop-filter: blur(18px);
 }
 
 .backButton {
@@ -179,7 +169,6 @@
   flex: 1;
   min-height: 0;
   gap: 12px;
-  padding: 14px 16px 16px;
 }
 
 .sceneDeck,
@@ -287,9 +276,24 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   overflow: auto;
   padding: 15px;
+}
+
+.inspector > section {
+  display: grid;
+  gap: 12px;
+}
+
+.statusPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--sim-border);
+  border-radius: var(--sim-radius);
+  background:
+    linear-gradient(180deg, rgba(18, 28, 40, 0.92), rgba(8, 14, 22, 0.88));
 }
 
 .panelHeader {
@@ -299,99 +303,179 @@
   gap: 12px;
 }
 
-.panelHeader span {
-  color: var(--sim-soft);
-  font-size: 12px;
-}
-
 .panelHeader strong {
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
+  line-height: 1.25;
 }
 
-.activeReadout {
-  display: grid;
-  gap: 12px;
-  padding: 15px;
-  border: 1px solid color-mix(in srgb, var(--active-color) 36%, rgba(255, 255, 255, 0.08));
-  border-radius: var(--sim-radius);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--active-color) 12%, transparent), rgba(255, 255, 255, 0.04)),
-    rgba(255, 255, 255, 0.035);
-}
-
-.readoutTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.readoutTop span {
-  color: var(--sim-muted);
-  font-size: 12px;
-}
-
-.readoutValue {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.readoutValue strong {
-  color: #ffffff;
-  font-family: var(--font-mono);
-  font-size: 38px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.readoutValue span {
-  color: var(--sim-muted);
-  font-size: 13px;
-}
-
-.readoutCopy {
-  margin: 0;
-  color: var(--sim-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.dataGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-
-.dataCell {
-  min-height: 82px;
-  padding: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: var(--sim-radius);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.dataCell span {
-  display: block;
-  margin-bottom: 8px;
+.panelHint {
   color: var(--sim-soft);
   font-size: 11px;
 }
 
-.dataCell strong {
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: var(--sim-radius);
+  background: rgba(34, 211, 238, 0.06);
+}
+
+.statusStrip[data-status="error"],
+.statusStrip[data-status="alarm"] {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.statusStrip[data-status="retrying"] {
+  border-color: rgba(251, 191, 36, 0.36);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.statusStripCell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 6px;
+}
+
+.statusStripCell span {
+  color: var(--sim-soft);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.statusStripCell strong {
   color: #ffffff;
-  font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: 13px;
   font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.alarmBanner {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: var(--sim-radius);
+  background:
+    linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(239, 68, 68, 0.08));
+}
+
+.alarmBanner > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alarmBanner span {
+  color: #fed7aa;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.alarmBanner strong {
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.alarmBanner p,
+.feedMessage {
+  margin: 0;
+  color: rgba(251, 191, 36, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pointSectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--sim-muted);
+  font-size: 12px;
+}
+
+.pointSectionHeader strong {
+  color: var(--sim-soft);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.pointGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pointCell {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pointCell[data-live="true"] {
+  border-color: rgba(34, 211, 238, 0.28);
+  background:
+    linear-gradient(180deg, rgba(34, 211, 238, 0.1), rgba(255, 255, 255, 0.03));
+}
+
+.pointCell[data-latest="true"] {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.18);
+}
+
+.pointCell span {
+  color: var(--sim-soft);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.pointCell strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pointCell[data-live="true"] strong {
+  color: #ffffff;
+}
+
+.pointCell strong small {
+  color: var(--sim-muted);
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.pointCell em {
+  color: var(--sim-soft);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .modbusCard {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
-  padding: 13px;
+  gap: 8px;
+  padding: 12px;
   border: 1px solid rgba(34, 211, 238, 0.22);
   border-radius: var(--sim-radius);
   background:
@@ -601,28 +685,6 @@
   line-height: 1.45;
 }
 
-.qualityList {
-  display: grid;
-  gap: 9px;
-}
-
-.qualityRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  color: var(--sim-muted);
-  font-size: 12px;
-}
-
-.qualityRow strong {
-  color: #ffffff;
-  font-family: var(--font-mono);
-  font-weight: 650;
-}
-
 .sceneLoading {
   display: flex;
   width: 100%;
@@ -680,10 +742,6 @@
 }
 
 @media (max-width: 980px) {
-  .topBar {
-    grid-template-columns: 1fr;
-  }
-
   .statusCluster {
     justify-content: flex-start;
   }
@@ -704,10 +762,6 @@
     min-height: 100vh;
   }
 
-  .topBar {
-    padding: 13px;
-  }
-
   .titleLine h1 {
     font-size: 21px;
   }
@@ -726,8 +780,12 @@
     grid-template-columns: 1fr;
   }
 
-  .dataGrid {
+  .statusStrip {
     grid-template-columns: 1fr;
+  }
+
+  .pointGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .legendStrip,

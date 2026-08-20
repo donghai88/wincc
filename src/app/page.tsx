@@ -4,16 +4,19 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { WinCCInstance, DeviceType } from '@/types/template';
 import { getDeviceTypeConfig, groupWinCCByDeviceType } from '@/data/wincc-config';
-import { productConfig } from '@/lib/product-mode';
 import Sidebar from '@/components/Sidebar';
 import SystemOverview from '@/components/SystemOverview';
 import DeviceTypeOverview from '@/components/DeviceTypeOverview';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUnreadAlarmCount } from '@/hooks/useUnreadAlarmCount';
+import { overviewDeviceTypes } from '@/lib/product-mode';
 import { LogOut, User } from 'lucide-react';
 
 // 次屏/重型模块延后加载；总览组件保持同步导入，避免首屏再等一轮动态编译。
 const AlarmCenter = dynamic(() => import('@/components/AlarmCenter'), { ssr: false });
 const TemperatureTrendReport = dynamic(() => import('@/components/TemperatureTrendReport'), { ssr: false });
+const LadleCurveAnalysis = dynamic(() => import('@/components/LadleCurveAnalysis'), { ssr: false });
+const LadleManagement = dynamic(() => import('@/components/LadleManagement'), { ssr: false });
 const WeeklyReportQuery = dynamic(() => import('@/components/WeeklyReportQuery'), { ssr: false });
 const DeviceMonitorPanel = dynamic(() => import('@/components/DeviceMonitorPanel'), { ssr: false });
 const MonitorCenter = dynamic(() => import('@/components/MonitorCenter'), { ssr: false });
@@ -26,6 +29,7 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [activeNav, setActiveNav] = useState('dashboard');
+  const unreadAlarmCount = useUnreadAlarmCount();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -92,10 +96,10 @@ export default function Home() {
 
     return (
       <>
-        <SystemOverview visibleDeviceTypes={productConfig ? [productConfig.deviceType] : undefined} />
+        <SystemOverview visibleDeviceTypes={overviewDeviceTypes} />
         <DeviceTypeOverview
           onSelectDeviceType={handleSelectDeviceType}
-          visibleDeviceTypes={productConfig ? [productConfig.deviceType] : undefined}
+          visibleDeviceTypes={overviewDeviceTypes}
         />
       </>
     );
@@ -127,6 +131,10 @@ export default function Home() {
         return <MonitorCenter />;
       case 'reports':
         return <TemperatureTrendReport />;
+      case 'curves':
+        return <LadleCurveAnalysis />;
+      case 'ladles':
+        return <LadleManagement />;
       case 'alarms':
         return <AlarmCenter />;
       case 'settings':
@@ -150,6 +158,8 @@ export default function Home() {
     dashboard: '监控总览',
     devices: '监控中心',
     reports: '报表分析',
+    curves: '曲线分析',
+    ladles: '钢包管理',
     alarms: '告警中心',
     settings: '查询周报',
     help: '帮助文档',
@@ -172,16 +182,32 @@ export default function Home() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--void)' }}>
+    <div
+      style={{
+        display: 'flex',
+        height: '100vh',
+        overflow: 'hidden',
+        background: 'var(--void)',
+      }}
+    >
       <Sidebar
         activeNav={activeNav}
         onNavChange={handleNavChange}
+        unreadAlarmCount={unreadAlarmCount}
         collapsed={effectiveSidebarCollapsed}
         onToggleCollapse={isNarrowViewport ? undefined : () => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header
+      <main
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >        <header
           style={{
             height: 56,
             display: 'flex',

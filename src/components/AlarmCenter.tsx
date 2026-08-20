@@ -1,99 +1,84 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import * as echarts from 'echarts';
-import type { EChartsOption, EChartsType } from 'echarts';
-import {
-  AppDateTimePicker,
-  formatAppDateTime,
-  parseAppDateTime,
-} from '@/components/AppDatePicker';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  RefreshCw,
-  Search,
-  Thermometer,
   XCircle,
 } from 'lucide-react';
+import * as echarts from 'echarts';
+import type { EChartsOption, EChartsType } from 'echarts';
 import {
-  alarmPageLocationNames,
+  buildAlarmBatchProcessApiPath,
   buildAlarmLocationStatApiPath,
   buildAlarmPageApiPath,
+  processAlarmBatchApi,
   queryAlarmPageApi,
   queryAlarmStatsByLocationApi,
 } from '@/data/wincc-config';
-import type { AlarmLocationStat, AlarmPageData, AlarmPageLevel, AlarmPageQuery, AlarmPageRecord, AlarmReadState } from '@/types/template';
+import type {
+  AlarmBatchProcessRequest,
+  AlarmLocationStat,
+  AlarmPageData,
+  AlarmPageLevel,
+  AlarmPageQuery,
+  AlarmPageRecord,
+  AlarmReadState,
+} from '@/types/template';
 import {
-  apiMockMode,
-  apiMockModeLabel,
-  buildApiUrl,
   canUseMockData,
   isMockOnly,
   unwrapApiData,
+  buildApiUrl,
 } from '@/lib/api-config';
+import { useAuth } from '@/contexts/AuthContext';
 
-type AlarmLevelFilter = 'all' | AlarmPageLevel;
 type AlarmReadFilter = 'all' | `${AlarmReadState}`;
-type AlarmSortKey = 'eventTimeStamp' | 'level' | 'maxTemp' | 'isRead' | 'locationName';
-type SortDirection = 'asc' | 'desc';
 type ApiStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
+type ProcessStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
+
+const LOCATION_CHART_COLORS = [
+  '#ff453a',
+  '#ff9f0a',
+  '#0a84ff',
+  '#bf5af2',
+  '#30d158',
+  '#64d2ff',
+  '#ffd60a',
+  '#ac8e68',
+];
 
 interface AlarmFilters {
   locationName: string;
-  level: AlarmLevelFilter;
   isRead: AlarmReadFilter;
-  startTime: string;
-  endTime: string;
   pageSize: number;
 }
 
-interface AlarmSortState {
-  key: AlarmSortKey;
-  direction: SortDirection;
-}
-
-interface AlarmChartProps {
-  className: string;
-  option: EChartsOption;
-  label: string;
-  onSelectLocation?: (locationName: string) => void;
-}
+const PAGE_SIZE = 20;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const defaultFilters: AlarmFilters = {
   locationName: '',
-  level: 'all',
   isRead: 'all',
-  startTime: '2026-06-25 08:26:56',
-  endTime: '2026-06-30 08:27:56',
-  pageSize: 10,
+  pageSize: PAGE_SIZE,
 };
 
-const defaultSortState: AlarmSortState = {
-  key: 'eventTimeStamp',
-  direction: 'desc',
+const pad = (value: number) => String(value).padStart(2, '0');
+
+const formatDateTimeValue = (date: Date) => (
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+);
+
+const getRecentSevenDayRange = () => {
+  const end = new Date();
+  const start = new Date(end.getTime() - SEVEN_DAYS_MS);
+  return {
+    startTime: formatDateTimeValue(start),
+    endTime: formatDateTimeValue(end),
+  };
 };
-
-const defaultSortDirections: Record<AlarmSortKey, SortDirection> = {
-  eventTimeStamp: 'desc',
-  level: 'desc',
-  maxTemp: 'desc',
-  isRead: 'asc',
-  locationName: 'asc',
-};
-
-const locationPalette = ['#ff453a', '#ff9f0a', '#0a84ff', '#8b5cf6', '#30d158', '#5eead4'];
-
-const toApiDateTime = (value: string) => {
-  if (!value) return undefined;
-  const normalized = value.replace('T', ' ');
-  return normalized.length === 16 ? `${normalized}:00` : normalized;
-};
-
-const formatDateTime = (value: string) => toApiDateTime(value) ?? '-';
 
 const getLevelMeta = (level: AlarmPageLevel) => {
   if (level === '2') {
@@ -103,6 +88,9 @@ const getLevelMeta = (level: AlarmPageLevel) => {
       color: 'var(--status-error)',
       background: 'rgba(255, 69, 58, 0.12)',
       border: 'rgba(255, 69, 58, 0.28)',
+      bar: '#ff453a',
+      modalBackground: '#1d0b0e',
+      modalBorder: '#ff453a',
       Icon: XCircle,
     };
   }
@@ -113,6 +101,9 @@ const getLevelMeta = (level: AlarmPageLevel) => {
     color: 'var(--status-warning)',
     background: 'rgba(255, 214, 10, 0.12)',
     border: 'rgba(255, 214, 10, 0.26)',
+    bar: '#ff9f0a',
+    modalBackground: '#1f1a05',
+    modalBorder: '#ffd60a',
     Icon: AlertTriangle,
   };
 };
@@ -121,53 +112,29 @@ const getReadMeta = (isRead: AlarmReadState) => {
   if (isRead === 1) {
     return {
       label: '已读',
-      action: '已确认',
       color: 'var(--text-tertiary)',
-      background: 'rgba(255, 255, 255, 0.05)',
-      border: 'var(--border)',
     };
   }
 
   return {
     label: '未读',
-    action: '待处理',
     color: 'var(--status-error)',
-    background: 'rgba(255, 69, 58, 0.12)',
-    border: 'rgba(255, 69, 58, 0.28)',
   };
 };
 
-function buildQuery(filters: AlarmFilters, pageNum: number): AlarmPageQuery {
+function buildQuery(
+  filters: AlarmFilters,
+  pageNum: number,
+  timeRange: { startTime: string; endTime: string },
+): AlarmPageQuery {
   return {
     pageNum,
     pageSize: filters.pageSize,
     locationName: filters.locationName || undefined,
-    level: filters.level === 'all' ? undefined : filters.level,
     isRead: filters.isRead === 'all' ? undefined : (Number(filters.isRead) as AlarmReadState),
-    startTime: toApiDateTime(filters.startTime),
-    endTime: toApiDateTime(filters.endTime),
+    startTime: timeRange.startTime,
+    endTime: timeRange.endTime,
   };
-}
-
-function getSortValue(record: AlarmPageRecord, key: AlarmSortKey) {
-  if (key === 'eventTimeStamp') return new Date(record.eventTimeStamp.replace(' ', 'T')).getTime();
-  if (key === 'level') return Number(record.level);
-  if (key === 'maxTemp') return record.maxTemp;
-  if (key === 'isRead') return record.isRead;
-  return record.locationName;
-}
-
-function sortRecords(records: AlarmPageRecord[], sortState: AlarmSortState) {
-  const direction = sortState.direction === 'asc' ? 1 : -1;
-
-  return [...records].sort((left, right) => {
-    const leftValue = getSortValue(left, sortState.key);
-    const rightValue = getSortValue(right, sortState.key);
-
-    if (leftValue > rightValue) return direction;
-    if (leftValue < rightValue) return -direction;
-    return new Date(right.eventTimeStamp.replace(' ', 'T')).getTime() - new Date(left.eventTimeStamp.replace(' ', 'T')).getTime();
-  });
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -184,17 +151,70 @@ const pickAlarmPageData = (payload: unknown): AlarmPageData => {
   return data as unknown as AlarmPageData;
 };
 
-const pickLocationStats = (payload: unknown): AlarmLocationStat[] => {
-  const data = unwrapApiData(payload);
-
-  if (!Array.isArray(data)) {
-    throw new Error('区域统计接口返回结构不符合文档');
+const pickBatchProcessResult = (payload: unknown): boolean => {
+  if (!isRecord(payload)) {
+    throw new Error('告警处理接口返回结构不符合文档');
   }
 
-  return data as AlarmLocationStat[];
+  if (typeof payload.code === 'number' && payload.code !== 200) {
+    throw new Error(typeof payload.msg === 'string' && payload.msg.trim()
+      ? payload.msg
+      : `告警处理失败 code=${payload.code}`);
+  }
+
+  if (unwrapApiData(payload) !== true) {
+    throw new Error('告警处理接口返回 data 不是 true');
+  }
+
+  return true;
 };
 
-function AlarmEChart({ className, option, label, onSelectLocation }: AlarmChartProps) {
+const pickLocationStats = (payload: unknown): AlarmLocationStat[] => {
+  const data = unwrapApiData(payload);
+  if (!Array.isArray(data) || !data.every(isRecord)) {
+    throw new Error('区域统计接口返回结构不符合文档：应为数组');
+  }
+
+  return data.map((row, index) => {
+    const locationName = row.locationName;
+    const alarmCount = row.alarmCount;
+    const unreadCount = row.unreadCount;
+    const maxTemp = row.maxTemp;
+    const minTemp = row.minTemp;
+
+    if (typeof locationName !== 'string' || !locationName.trim()) {
+      throw new Error(`区域统计第 ${index + 1} 条缺少 locationName`);
+    }
+    if (typeof alarmCount !== 'number' || !Number.isFinite(alarmCount)) {
+      throw new Error(`区域统计 ${locationName} 缺少 alarmCount`);
+    }
+    if (typeof unreadCount !== 'number' || !Number.isFinite(unreadCount)) {
+      throw new Error(`区域统计 ${locationName} 缺少 unreadCount`);
+    }
+    if (typeof maxTemp !== 'number' || !Number.isFinite(maxTemp)) {
+      throw new Error(`区域统计 ${locationName} 缺少 maxTemp`);
+    }
+    if (typeof minTemp !== 'number' || !Number.isFinite(minTemp)) {
+      throw new Error(`区域统计 ${locationName} 缺少 minTemp`);
+    }
+
+    return {
+      locationName,
+      alarmCount,
+      unreadCount,
+      maxTemp,
+      minTemp,
+    };
+  });
+};
+
+const getRecordKey = (record: AlarmPageRecord) => `${record.id}:${record.eventId}`;
+
+const getDefaultProcessor = (userName?: string | null, username?: string | null) => (
+  userName?.trim() || username?.trim() || ''
+);
+
+function AlarmLocationChart({ option, label }: { option: EChartsOption; label: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
 
@@ -215,164 +235,229 @@ function AlarmEChart({ className, option, label, onSelectLocation }: AlarmChartP
   }, []);
 
   useEffect(() => {
-    chartRef.current?.setOption(option, { notMerge: false, lazyUpdate: true });
+    chartRef.current?.setOption(option, { notMerge: true, lazyUpdate: true });
   }, [option]);
 
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart || !onSelectLocation) return undefined;
-
-    const handler = (params: unknown) => {
-      const locationName = typeof params === 'object' && params && 'name' in params ? String(params.name) : '';
-      if (locationName) onSelectLocation(locationName);
-    };
-
-    chart.on('click', handler);
-    return () => {
-      chart.off('click', handler);
-    };
-  }, [onSelectLocation]);
-
-  return <div ref={containerRef} className={className} role="img" aria-label={label} />;
+  return <div ref={containerRef} className="alarm-location-chart" role="img" aria-label={label} />;
 }
 
-function MetricChip({ label, value, tone }: { label: string; value: string | number; tone?: 'danger' | 'warning' | 'info' }) {
-  return (
-    <div className="alarm-metric" data-tone={tone}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function AlarmLevelBadge({ level }: { level: AlarmPageLevel }) {
-  const meta = getLevelMeta(level);
-  const Icon = meta.Icon;
-
-  return (
-    <span className="alarm-level-badge" style={{ borderColor: meta.border, background: meta.background, color: meta.color }}>
-      <Icon size={13} />
-      <span>{meta.label}</span>
-      <em>{meta.tone}</em>
-    </span>
-  );
-}
-
-function ReadStateBadge({ isRead }: { isRead: AlarmReadState }) {
-  const meta = getReadMeta(isRead);
-
-  return (
-    <span className="alarm-read-badge" style={{ borderColor: meta.border, background: meta.background, color: meta.color }}>
-      {meta.label}
-    </span>
-  );
-}
-
-function RecordMobileCard({ record }: { record: AlarmPageRecord }) {
+function AlarmRecordCard({
+  record,
+  selected,
+  onOpen,
+}: {
+  record: AlarmPageRecord;
+  selected: boolean;
+  onOpen: (record: AlarmPageRecord) => void;
+}) {
   const levelMeta = getLevelMeta(record.level);
   const readMeta = getReadMeta(record.isRead);
   const LevelIcon = levelMeta.Icon;
 
   return (
-    <article className="alarm-mobile-card" style={{ borderColor: levelMeta.border }}>
-      <div className="alarm-mobile-head">
-        <div className="alarm-mobile-icon" style={{ color: levelMeta.color, background: levelMeta.background }}>
-          <LevelIcon size={16} />
-        </div>
-        <div>
-          <strong>{record.channelName} · {record.ruleType}</strong>
-          <span>{record.eventTimeStamp}</span>
-        </div>
-        <em style={{ color: readMeta.color }}>{readMeta.action}</em>
+    <article
+      className="alarm-record-card"
+      data-unread={record.isRead === 0}
+      data-selected={selected}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(record)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(record);
+        }
+      }}
+    >
+      <span className="alarm-record-bar" style={{ background: levelMeta.bar }} aria-hidden />
+      <div
+        className="alarm-record-icon"
+        style={{ color: levelMeta.color, background: levelMeta.background }}
+      >
+        <LevelIcon size={18} />
       </div>
-
-      <div className="alarm-mobile-fields">
-        <span>区域 {record.locationName}</span>
-        <span>次数 {record.num}</span>
-        <span>平均 {record.avgTemp.toFixed(1)}℃</span>
-        <span>最低 {record.minTemp.toFixed(1)}℃</span>
-        <span>最高 {record.maxTemp.toFixed(1)}℃</span>
-        <span>阈值 {record.thresholdTemp.toFixed(1)}℃</span>
+      <div className="alarm-record-body">
+        <strong>
+          {record.channelName} - {record.locationName}
+          <span className="alarm-record-divider">|</span>
+          {record.ruleType}
+        </strong>
+        <p>
+          <span>温度:{record.maxTemp.toFixed(1)}°C</span>
+          <span className="alarm-record-divider">|</span>
+          <span>{record.eventTimeStamp}</span>
+          <span className="alarm-record-divider">|</span>
+          <em style={{ color: readMeta.color }}>{readMeta.label}</em>
+        </p>
       </div>
     </article>
   );
 }
 
 export default function AlarmCenter() {
+  const { user } = useAuth();
   const [draftFilters, setDraftFilters] = useState<AlarmFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<AlarmFilters>(defaultFilters);
+  const [timeRange, setTimeRange] = useState(getRecentSevenDayRange);
   const [pageNum, setPageNum] = useState(1);
-  const [sortState, setSortState] = useState<AlarmSortState>(defaultSortState);
-  const [alarmPageData, setAlarmPageData] = useState<AlarmPageData>(() =>
-    queryAlarmPageApi(buildQuery(defaultFilters, 1)).data
-  );
-  const [locationStats, setLocationStats] = useState<AlarmLocationStat[]>(() =>
-    queryAlarmStatsByLocationApi({
-      startTime: toApiDateTime(defaultFilters.startTime),
-      endTime: toApiDateTime(defaultFilters.endTime),
-    }).data
-  );
+  const [queryVersion, setQueryVersion] = useState(0);
+  const [alarmPageData, setAlarmPageData] = useState<AlarmPageData>({ total: 0, list: [] });
+  const [knownLocations, setKnownLocations] = useState<string[]>([]);
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [locallyReadRecordIds, setLocallyReadRecordIds] = useState<Set<string>>(() => new Set());
+  const [processor, setProcessor] = useState('');
+  const [processContent, setProcessContent] = useState('');
+  const [processStatus, setProcessStatus] = useState<ProcessStatus>('idle');
+  const [processMessage, setProcessMessage] = useState('');
+  const [locationStats, setLocationStats] = useState<AlarmLocationStat[]>([]);
+  const [statsStatus, setStatsStatus] = useState<ApiStatus>('idle');
+  const [statsMessage, setStatsMessage] = useState('');
   const [apiStatus, setApiStatus] = useState<ApiStatus>('idle');
   const [apiMessage, setApiMessage] = useState('');
-  const [isPending, startTransition] = useTransition();
 
-  const allQuery = useMemo(
-    () => ({
-      ...buildQuery(appliedFilters, 1),
-      pageSize: 1000,
-    }),
-    [appliedFilters]
-  );
-  const allRecords = alarmPageData.list;
-  const sortedRecords = useMemo(() => sortRecords(allRecords, sortState), [allRecords, sortState]);
-  const totalPages = Math.max(1, Math.ceil(sortedRecords.length / appliedFilters.pageSize));
+  const allQuery = useMemo(() => ({
+    ...buildQuery(appliedFilters, 1, timeRange),
+    pageSize: 1000,
+  }), [appliedFilters, timeRange]);
+
+  const locationStatQuery = useMemo(() => ({
+    startTime: timeRange.startTime,
+    endTime: timeRange.endTime,
+  }), [timeRange]);
+
+  const allRecords = useMemo(() => {
+    return alarmPageData.list.map((record) => {
+      return locallyReadRecordIds.has(getRecordKey(record)) ? { ...record, isRead: 1 as const } : record;
+    });
+  }, [alarmPageData.list, locallyReadRecordIds]);
+
+  const visibleRecords = useMemo(() => {
+    if (appliedFilters.isRead === 'all') return allRecords;
+    return allRecords.filter((record) => record.isRead === Number(appliedFilters.isRead));
+  }, [allRecords, appliedFilters.isRead]);
+
+  const locallyReadUnreadRecords = useMemo(() => {
+    return alarmPageData.list.filter((record) => record.isRead === 0 && locallyReadRecordIds.has(getRecordKey(record)));
+  }, [alarmPageData.list, locallyReadRecordIds]);
+
+  const resultTotal = appliedFilters.isRead === '0'
+    ? Math.max(0, alarmPageData.total - locallyReadUnreadRecords.length)
+    : alarmPageData.total;
+
+  const sortedRecords = useMemo(() => {
+    return [...visibleRecords].sort((left, right) => (
+      new Date(right.eventTimeStamp.replace(' ', 'T')).getTime()
+      - new Date(left.eventTimeStamp.replace(' ', 'T')).getTime()
+    ));
+  }, [visibleRecords]);
+
+  const totalPages = Math.max(1, Math.ceil(resultTotal / appliedFilters.pageSize));
   const currentPage = Math.min(pageNum, totalPages);
   const pageStart = (currentPage - 1) * appliedFilters.pageSize;
   const result = useMemo(
     () => ({
-      total: sortedRecords.length,
+      total: resultTotal,
       list: sortedRecords.slice(pageStart, pageStart + appliedFilters.pageSize),
     }),
-    [appliedFilters.pageSize, pageStart, sortedRecords]
+    [appliedFilters.pageSize, pageStart, resultTotal, sortedRecords]
   );
 
-  const pageQuery = useMemo(() => buildQuery(appliedFilters, currentPage), [appliedFilters, currentPage]);
-  const apiPath = buildAlarmPageApiPath(pageQuery);
-  const locationStatQuery = useMemo(
-    () => ({
-      startTime: toApiDateTime(appliedFilters.startTime),
-      endTime: toApiDateTime(appliedFilters.endTime),
-    }),
-    [appliedFilters.startTime, appliedFilters.endTime]
-  );
-  const rankedLocationStats = useMemo(
-    () => [...locationStats].sort((left, right) => right.alarmCount - left.alarmCount),
-    [locationStats]
-  );
+  const locationNames = useMemo(() => {
+    return Array.from(new Set([
+      ...knownLocations,
+      ...locationStats.map((stat) => stat.locationName),
+      ...allRecords.map((record) => record.locationName),
+    ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'));
+  }, [allRecords, knownLocations, locationStats]);
 
-  const totalByLocation = locationStats.reduce((sum, stat) => sum + stat.alarmCount, 0);
-  const unreadCount = sortedRecords.filter((record) => record.isRead === 0).length;
-  const severeCount = sortedRecords.filter((record) => record.level === '2').length;
-  const maxTemp = sortedRecords.length
-    ? Math.max(...sortedRecords.map((record) => record.maxTemp)).toFixed(1)
-    : '--';
+  const locationStatSummary = useMemo(() => {
+    return locationStats.reduce(
+      (summary, stat) => ({
+        alarmCount: summary.alarmCount + stat.alarmCount,
+        unreadCount: summary.unreadCount + stat.unreadCount,
+      }),
+      { alarmCount: 0, unreadCount: 0 },
+    );
+  }, [locationStats]);
+
+  const locationChartOption = useMemo<EChartsOption>(() => {
+    const chartData = [...locationStats]
+      .filter((stat) => stat.alarmCount > 0)
+      .sort((left, right) => right.alarmCount - left.alarmCount)
+      .map((stat, index) => ({
+        name: stat.locationName,
+        value: stat.alarmCount,
+        itemStyle: { color: LOCATION_CHART_COLORS[index % LOCATION_CHART_COLORS.length] },
+      }));
+
+    return {
+      backgroundColor: 'transparent',
+      color: LOCATION_CHART_COLORS,
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: 'rgba(8, 12, 18, 0.96)',
+        borderColor: 'rgba(10, 132, 255, 0.35)',
+        borderWidth: 1,
+        textStyle: { color: 'rgba(255,255,255,0.88)', fontSize: 12 },
+        formatter: (params: unknown) => {
+          const item = Array.isArray(params) ? params[0] : params;
+          if (!item || typeof item !== 'object') return '';
+          const row = item as { name?: string; value?: number; percent?: number };
+          const unread = locationStats.find((stat) => stat.locationName === row.name)?.unreadCount ?? 0;
+          return `${row.name ?? ''}<br/>告警 ${row.value ?? 0} 条（${row.percent ?? 0}%）<br/>未读 ${unread} 条`;
+        },
+      },
+      series: [
+        {
+          name: '告警区域分布',
+          type: 'pie',
+          radius: ['48%', '72%'],
+          center: ['50%', '52%'],
+          avoidLabelOverlap: true,
+          itemStyle: {
+            borderRadius: 4,
+            borderColor: '#0c1118',
+            borderWidth: 2,
+          },
+          label: {
+            color: 'rgba(255,255,255,0.72)',
+            fontSize: 11,
+            formatter: '{b}\n{c}',
+          },
+          labelLine: {
+            length: 10,
+            length2: 8,
+            lineStyle: { color: 'rgba(255,255,255,0.22)' },
+          },
+          data: chartData,
+        },
+      ],
+    };
+  }, [locationStats]);
+
+  const selectedRecord = useMemo(() => {
+    return allRecords.find((record) => getRecordKey(record) === selectedRecordId) ?? null;
+  }, [allRecords, selectedRecordId]);
+  const selectedAlarmLevelMeta = getLevelMeta(selectedRecord?.level ?? '1');
+  const isSelectedRecordLocallyRead = selectedRecord ? locallyReadRecordIds.has(getRecordKey(selectedRecord)) : false;
+
   const startIndex = result.total === 0 ? 0 : pageStart + 1;
   const endIndex = Math.min(pageStart + appliedFilters.pageSize, result.total);
-  const appliedFilterLabels = [
-    appliedFilters.locationName || '全部区域',
-    appliedFilters.isRead === 'all' ? '全部状态' : appliedFilters.isRead === '0' ? '未读' : '已读',
-    appliedFilters.level === 'all' ? '全部等级' : `${appliedFilters.level}级`,
-    `${formatDateTime(appliedFilters.startTime)} 至 ${formatDateTime(appliedFilters.endTime)}`,
-    apiStatus === 'loading'
-      ? '查询中'
-      : apiStatus === 'success'
-      ? '接口数据'
-      : apiStatus === 'fallback'
-        ? '接口失败 · 样例'
-        : apiStatus === 'error'
-          ? '接口失败'
-          : apiMockModeLabel[apiMockMode],
-  ];
+
+  useEffect(() => {
+    if (!selectedRecordId) return undefined;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedRecordId(null);
+        setProcessStatus('idle');
+        setProcessMessage('');
+      }
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedRecordId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -381,8 +466,12 @@ export default function AlarmCenter() {
       setApiMessage('');
 
       if (isMockOnly) {
-        setAlarmPageData(queryAlarmPageApi(allQuery).data);
-        setLocationStats(queryAlarmStatsByLocationApi(locationStatQuery).data);
+        const mockData = queryAlarmPageApi(allQuery).data;
+        setAlarmPageData(mockData);
+        setKnownLocations((current) => Array.from(new Set([
+          ...current,
+          ...mockData.list.map((record) => record.locationName),
+        ].filter(Boolean))));
         setApiStatus('mock');
         return;
       }
@@ -390,229 +479,250 @@ export default function AlarmCenter() {
       setApiStatus('loading');
 
       try {
-        const [pageResponse, statResponse] = await Promise.all([
-          fetch(buildApiUrl(buildAlarmPageApiPath(allQuery)), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-          }),
-          fetch(buildApiUrl(buildAlarmLocationStatApiPath(locationStatQuery)), {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-          }),
-        ]);
+        const pageResponse = await fetch(buildApiUrl(buildAlarmPageApiPath(allQuery)), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
 
-        if (!pageResponse.ok) throw new Error(`/alarm/page HTTP ${pageResponse.status}`);
-        if (!statResponse.ok) throw new Error(`/alarm/stat-by-location HTTP ${statResponse.status}`);
+        if (!pageResponse.ok) throw new Error(`HTTP ${pageResponse.status}`);
 
-        const [pagePayload, statPayload] = await Promise.all([
-          pageResponse.json() as Promise<unknown>,
-          statResponse.json() as Promise<unknown>,
-        ]);
-
-        setAlarmPageData(pickAlarmPageData(pagePayload));
-        setLocationStats(pickLocationStats(statPayload));
+        const pagePayload = await pageResponse.json() as unknown;
+        const pageData = pickAlarmPageData(pagePayload);
+        setAlarmPageData(pageData);
+        setKnownLocations((current) => Array.from(new Set([
+          ...current,
+          ...pageData.list.map((record) => record.locationName),
+        ].filter(Boolean))));
         setApiStatus('success');
-      } catch (error) {
+      } catch {
         if (controller.signal.aborted) return;
 
         if (canUseMockData) {
-          setAlarmPageData(queryAlarmPageApi(allQuery).data);
-          setLocationStats(queryAlarmStatsByLocationApi(locationStatQuery).data);
+          const fallbackData = queryAlarmPageApi(allQuery).data;
+          setAlarmPageData(fallbackData);
+          setKnownLocations((current) => Array.from(new Set([
+            ...current,
+            ...fallbackData.list.map((record) => record.locationName),
+          ].filter(Boolean))));
           setApiStatus('fallback');
         } else {
           setAlarmPageData({ total: 0, list: [] });
-          setLocationStats([]);
           setApiStatus('error');
         }
 
-        setApiMessage(error instanceof Error ? error.message : '接口请求失败');
+        setApiMessage(canUseMockData ? '数据加载异常，已展示备用数据' : '加载失败，请稍后重试');
       }
     }
 
     loadAlarmData();
 
     return () => controller.abort();
-  }, [allQuery, locationStatQuery]);
+  }, [allQuery, queryVersion]);
 
-  const pieOption = useMemo<EChartsOption>(() => ({
-    backgroundColor: 'transparent',
-    animation: false,
-    color: locationPalette,
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(18, 18, 18, 0.96)',
-      borderColor: 'rgba(255,255,255,0.12)',
-      textStyle: { color: '#fff', fontSize: 12 },
-      formatter: '{b}<br/>告警 {c} 条 · {d}%',
-    },
-    legend: {
-      type: 'scroll',
-      bottom: 4,
-      left: 'center',
-      itemWidth: 8,
-      itemHeight: 8,
-      selectedMode: false,
-      textStyle: { color: 'rgba(255,255,255,0.58)', fontSize: 11 },
-      pageIconColor: 'rgba(255,255,255,0.42)',
-      pageTextStyle: { color: 'rgba(255,255,255,0.42)' },
-    },
-    series: [
-      {
-        name: '区域告警',
-        type: 'pie',
-        radius: ['52%', '70%'],
-        center: ['50%', '44%'],
-        avoidLabelOverlap: true,
-        minAngle: 5,
-        label: { show: false },
-        labelLine: { show: false },
-        itemStyle: {
-          borderWidth: 2,
-          borderColor: '#111',
-        },
-        emphasis: {
-          scale: false,
-          itemStyle: { opacity: 0.86 },
-        },
-        data: rankedLocationStats.map((stat) => ({
-          name: stat.locationName,
-          value: stat.alarmCount,
-          selected: appliedFilters.locationName === stat.locationName,
-        })),
-      },
-    ],
-    graphic: [
-      {
-        type: 'text',
-        left: 'center',
-        top: '38%',
-        style: {
-          text: `${totalByLocation}`,
-          fill: '#fff',
-          font: '600 24px SF Mono, monospace',
-          textAlign: 'center',
-        },
-      },
-      {
-        type: 'text',
-        left: 'center',
-        top: '53%',
-        style: {
-          text: '总数',
-          fill: 'rgba(255,255,255,0.42)',
-          font: '11px system-ui',
-          textAlign: 'center',
-        },
-      },
-    ],
-  }), [appliedFilters.locationName, rankedLocationStats, totalByLocation]);
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const barOption = useMemo<EChartsOption>(() => ({
-    backgroundColor: 'transparent',
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      backgroundColor: 'rgba(18, 18, 18, 0.96)',
-      borderColor: 'rgba(255,255,255,0.12)',
-      textStyle: { color: '#fff', fontSize: 12 },
-      formatter: (params) => {
-        const item = Array.isArray(params) ? params[0] : params;
-        const stat = rankedLocationStats.find((entry) => entry.locationName === item.name);
-        if (!stat) return `${item.name}: ${item.value}`;
-        return `${stat.locationName}<br/>告警 ${stat.alarmCount} 条<br/>未读 ${stat.unreadCount} 条<br/>最高 ${stat.maxTemp.toFixed(1)}℃ / 最低 ${stat.minTemp.toFixed(1)}℃`;
-      },
-    },
-    grid: { left: 56, right: 38, top: 10, bottom: 18 },
-    xAxis: {
-      type: 'value',
-      minInterval: 1,
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-      axisLabel: { color: 'rgba(255,255,255,0.36)', fontSize: 10 },
-    },
-    yAxis: {
-      type: 'category',
-      inverse: true,
-      data: rankedLocationStats.map((stat) => stat.locationName),
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-      axisLabel: { color: 'rgba(255,255,255,0.64)', fontSize: 11 },
-    },
-    series: [
-      {
-        name: '告警数',
-        type: 'bar',
-        data: rankedLocationStats.map((stat, index) => ({
-          name: stat.locationName,
-          value: stat.alarmCount,
-          itemStyle: {
-            color: locationPalette[index % locationPalette.length],
-            opacity: appliedFilters.locationName && appliedFilters.locationName !== stat.locationName ? 0.34 : 1,
-            borderRadius: [0, 4, 4, 0],
-          },
-        })),
-        barWidth: 15,
-        label: {
-          show: true,
-          position: 'right',
-          color: 'rgba(255,255,255,0.68)',
-          fontSize: 10,
-          formatter: '{c}',
-        },
-      },
-    ],
-  }), [appliedFilters.locationName, rankedLocationStats]);
+    async function loadLocationStats() {
+      setStatsMessage('');
 
-  const updateDraftFilter = <K extends keyof AlarmFilters>(key: K, value: AlarmFilters[K]) => {
-    setDraftFilters((current) => ({ ...current, [key]: value }));
+      if (isMockOnly) {
+        const mockStats = queryAlarmStatsByLocationApi(locationStatQuery).data;
+        setLocationStats(mockStats);
+        setKnownLocations((current) => Array.from(new Set([
+          ...current,
+          ...mockStats.map((stat) => stat.locationName),
+        ].filter(Boolean))));
+        setStatsStatus('mock');
+        return;
+      }
+
+      setStatsStatus('loading');
+
+      try {
+        const response = await fetch(buildApiUrl(buildAlarmLocationStatApiPath(locationStatQuery)), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const payload = await response.json() as unknown;
+        const stats = pickLocationStats(payload);
+        setLocationStats(stats);
+        setKnownLocations((current) => Array.from(new Set([
+          ...current,
+          ...stats.map((stat) => stat.locationName),
+        ].filter(Boolean))));
+        setStatsStatus('success');
+      } catch {
+        if (controller.signal.aborted) return;
+
+        if (canUseMockData) {
+          const fallbackStats = queryAlarmStatsByLocationApi(locationStatQuery).data;
+          setLocationStats(fallbackStats);
+          setKnownLocations((current) => Array.from(new Set([
+            ...current,
+            ...fallbackStats.map((stat) => stat.locationName),
+          ].filter(Boolean))));
+          setStatsStatus('fallback');
+        } else {
+          setLocationStats([]);
+          setStatsStatus('error');
+        }
+
+        setStatsMessage(canUseMockData ? '区域统计加载异常，已展示备用数据' : '区域统计加载失败，请稍后重试');
+      }
+    }
+
+    loadLocationStats();
+
+    return () => controller.abort();
+  }, [locationStatQuery, queryVersion]);
+
+  const updateLocation = (locationName: string) => {
+    setDraftFilters((current) => ({ ...current, locationName }));
   };
 
-  const applyFilters = (nextFilters = draftFilters) => {
+  const updateReadFilter = (isRead: AlarmReadFilter) => {
+    setDraftFilters((current) => ({ ...current, isRead }));
+  };
+
+  const submitQuery = () => {
     setPageNum(1);
-    startTransition(() => setAppliedFilters(nextFilters));
+    setTimeRange(getRecentSevenDayRange());
+    setAppliedFilters({ ...draftFilters });
+    // Bump version so identical filters still re-request /alarm/page.
+    setQueryVersion((current) => current + 1);
   };
 
-  const applyShortcut = (nextFilters: AlarmFilters) => {
-    setDraftFilters(nextFilters);
-    applyFilters(nextFilters);
+  const openAlarmDetail = (record: AlarmPageRecord) => {
+    const recordKey = getRecordKey(record);
+    setSelectedRecordId(recordKey);
+    setProcessor(record.processor?.trim() || getDefaultProcessor(user?.name, user?.username));
+    setProcessContent(record.processContent ?? '');
+    setProcessStatus('idle');
+    setProcessMessage('');
+
+    if (record.isRead === 0) {
+      setLocallyReadRecordIds((current) => {
+        if (current.has(recordKey)) return current;
+        return new Set(current).add(recordKey);
+      });
+    }
   };
 
-  const resetFilters = () => {
-    setDraftFilters(defaultFilters);
-    setPageNum(1);
-    setSortState(defaultSortState);
-    startTransition(() => setAppliedFilters(defaultFilters));
+  const closeAlarmDetail = () => {
+    setSelectedRecordId(null);
+    setProcessStatus('idle');
+    setProcessMessage('');
   };
 
-  const selectLocationFromChart = (locationName: string) => {
-    const nextFilters = {
-      ...draftFilters,
-      locationName: appliedFilters.locationName === locationName ? '' : locationName,
-    };
+  const applyLocalProcessResult = (
+    request: AlarmBatchProcessRequest,
+    recordKey: string,
+  ) => {
+    const processTime = formatDateTimeValue(new Date());
+    const eventIds = new Set(request.eventIds);
 
-    applyShortcut(nextFilters);
-  };
+    setAlarmPageData((current) => ({
+      ...current,
+      list: current.list.map((record) => {
+        if (!eventIds.has(record.eventId)) return record;
+        return {
+          ...record,
+          isRead: 1,
+          processor: request.processor,
+          processContent: request.processContent,
+          processTime,
+        };
+      }),
+    }));
 
-  const toggleSort = (key: AlarmSortKey) => {
-    setSortState((current) => {
-      if (current.key !== key) return { key, direction: defaultSortDirections[key] };
-      return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+    setLocallyReadRecordIds((current) => {
+      if (current.has(recordKey)) return current;
+      return new Set(current).add(recordKey);
     });
   };
 
-  const getSortLabel = (key: AlarmSortKey) => {
-    if (sortState.key !== key) return '';
-    return sortState.direction === 'asc' ? '升序' : '降序';
-  };
+  const submitProcess = async () => {
+    if (!selectedRecord) return;
 
-  const renderSortHeader = (key: AlarmSortKey, label: string) => (
-    <button className="alarm-sort-button" type="button" onClick={() => toggleSort(key)} aria-pressed={sortState.key === key}>
-      <span>{label}</span>
-      {sortState.key === key && <em>{sortState.direction === 'asc' ? '升' : '降'}</em>}
-    </button>
-  );
+    const recordKey = getRecordKey(selectedRecord);
+    const request: AlarmBatchProcessRequest = {
+      eventIds: [selectedRecord.eventId],
+      processor: processor.trim(),
+      processContent: processContent.trim(),
+    };
+
+    if (!request.processor) {
+      setProcessStatus('error');
+      setProcessMessage('请填写处理人');
+      return;
+    }
+
+    if (!request.processContent) {
+      setProcessStatus('error');
+      setProcessMessage('请填写处理内容');
+      return;
+    }
+
+    setProcessStatus('loading');
+    setProcessMessage('');
+
+    if (isMockOnly) {
+      try {
+        processAlarmBatchApi(request);
+        applyLocalProcessResult(request, recordKey);
+        setProcessStatus('mock');
+        setProcessMessage('处理完成');
+        setQueryVersion((current) => current + 1);
+      } catch (error) {
+        setProcessStatus('error');
+        setProcessMessage(error instanceof Error ? error.message : '处理失败');
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl(buildAlarmBatchProcessApiPath()), {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json() as unknown;
+      pickBatchProcessResult(payload);
+      applyLocalProcessResult(request, recordKey);
+      setProcessStatus('success');
+      setProcessMessage('处理成功');
+      setQueryVersion((current) => current + 1);
+    } catch {
+      if (canUseMockData) {
+        try {
+          processAlarmBatchApi(request);
+          applyLocalProcessResult(request, recordKey);
+          setProcessStatus('fallback');
+          setProcessMessage('处理通道异常，已写入备用记录');
+          setQueryVersion((current) => current + 1);
+          return;
+        } catch {
+          // fall through to error
+        }
+      }
+
+      setProcessStatus('error');
+      setProcessMessage('处理失败，请稍后重试');
+    }
+  };
 
   return (
     <section className="alarm-center">
@@ -626,27 +736,32 @@ export default function AlarmCenter() {
 
         .alarm-control-panel,
         .alarm-records-panel,
-        .alarm-insight-panel {
+        .alarm-stats-panel {
           border: 1px solid var(--border);
           border-radius: 8px;
           background: var(--surface-elevated);
         }
 
         .alarm-control-panel {
-          display: grid;
-          gap: 10px;
+          display: flex;
+          align-items: end;
+          justify-content: space-between;
+          gap: 12px;
           padding: 12px;
+          flex-wrap: wrap;
         }
 
         .alarm-filter-row {
-          display: grid;
-          grid-template-columns: minmax(128px, 0.9fr) minmax(128px, 0.8fr) minmax(128px, 0.8fr) minmax(188px, 1.15fr) minmax(188px, 1.15fr) auto;
-          gap: 10px;
+          display: flex;
           align-items: end;
+          gap: 12px;
+          flex-wrap: wrap;
+          min-width: 0;
+          flex: 1;
         }
 
         .alarm-field {
-          min-width: 0;
+          min-width: 160px;
           display: grid;
           gap: 5px;
         }
@@ -656,9 +771,7 @@ export default function AlarmCenter() {
           color: var(--text-tertiary);
         }
 
-        .alarm-field > select,
-        .alarm-field > input,
-        .alarm-page-size {
+        .alarm-field > select {
           width: 100%;
           height: 36px;
           border-radius: 6px;
@@ -670,54 +783,16 @@ export default function AlarmCenter() {
           outline: none;
         }
 
-        .alarm-field :global(.ant-picker) {
-          width: 100%;
-          height: 36px;
-          border-radius: 6px;
-        }
-
-        .alarm-field :global(.ant-picker-input > input) {
-          font-size: 12px;
-          font-family: var(--font-mono);
-        }
-
-        .alarm-field > select:focus,
-        .alarm-field > input:focus,
-        .alarm-page-size:focus {
+        .alarm-field > select:focus {
           border-color: rgba(10, 132, 255, 0.62);
         }
 
-        .alarm-actions,
         .alarm-shortcuts,
-        .alarm-metric-row,
-        .alarm-filter-summary {
+        .alarm-actions {
           display: flex;
           align-items: center;
           gap: 8px;
-        }
-
-        .alarm-actions {
-          justify-content: flex-end;
-        }
-
-        .alarm-status-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding-top: 10px;
-          border-top: 1px solid var(--border-subtle);
-        }
-
-        .alarm-shortcuts,
-        .alarm-filter-summary,
-        .alarm-metric-row {
           flex-wrap: wrap;
-        }
-
-        .alarm-filter-summary {
-          min-width: 0;
-          flex: 1;
         }
 
         .alarm-text-button,
@@ -747,39 +822,30 @@ export default function AlarmCenter() {
         .alarm-text-button:hover,
         .alarm-icon-button:hover,
         .alarm-pill-button:hover,
-        .alarm-text-button[data-active='true'],
         .alarm-pill-button[data-active='true'] {
           border-color: rgba(10, 132, 255, 0.5);
           color: var(--text-primary);
           background: rgba(10, 132, 255, 0.1);
         }
 
+        .alarm-query-button {
+          min-width: 72px;
+          border-color: rgba(10, 132, 255, 0.55);
+          background: rgba(10, 132, 255, 0.92);
+          color: #fff;
+        }
+
+        .alarm-query-button:hover {
+          border-color: rgba(10, 132, 255, 0.8);
+          background: rgba(10, 132, 255, 1);
+          color: #fff;
+        }
+
         .alarm-text-button:disabled,
+        .alarm-query-button:disabled,
         .alarm-icon-button:disabled {
           opacity: 0.42;
           cursor: not-allowed;
-        }
-
-        .alarm-primary-button {
-          border-color: rgba(10, 132, 255, 0.62);
-          background: rgba(10, 132, 255, 0.14);
-          color: var(--text-primary);
-        }
-
-        .alarm-condition-chip {
-          min-height: 24px;
-          max-width: 320px;
-          display: inline-flex;
-          align-items: center;
-          border: 1px solid var(--border-subtle);
-          border-radius: 999px;
-          padding: 0 9px;
-          color: var(--text-tertiary);
-          background: rgba(255, 255, 255, 0.025);
-          font-size: 11px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         .alarm-api-message {
@@ -795,54 +861,108 @@ export default function AlarmCenter() {
           font-size: 12px;
         }
 
-        .alarm-metric {
-          min-width: 82px;
-          height: 38px;
-          border-left: 1px solid var(--border);
-          padding-left: 10px;
-        }
-
-        .alarm-metric span {
-          display: block;
-          font-size: 10px;
-          color: var(--text-tertiary);
-        }
-
-        .alarm-metric strong {
-          display: block;
-          margin-top: 1px;
-          color: var(--text-primary);
-          font-size: 16px;
-          line-height: 1.1;
-          font-family: var(--font-mono);
-          font-variant-numeric: tabular-nums;
-        }
-
-        .alarm-metric[data-tone='danger'] strong {
-          color: var(--status-error);
-        }
-
-        .alarm-metric[data-tone='warning'] strong {
-          color: var(--status-warning);
-        }
-
-        .alarm-metric[data-tone='info'] strong {
-          color: #5eead4;
-        }
-
-        .alarm-workspace {
-          flex: 1;
-          min-height: 560px;
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 348px;
-          gap: 12px;
-        }
-
         .alarm-records-panel {
+          flex: 1;
           min-height: 0;
           overflow: hidden;
           display: flex;
           flex-direction: column;
+        }
+
+        .alarm-stats-panel {
+          padding: 14px 16px 16px;
+        }
+
+        .alarm-stats-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .alarm-stats-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          flex-wrap: wrap;
+        }
+
+        .alarm-stats-title h2 {
+          color: var(--text-primary);
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .alarm-stats-title span,
+        .alarm-stats-meta {
+          color: var(--text-tertiary);
+          font-size: 12px;
+        }
+
+        .alarm-stats-body {
+          display: grid;
+          grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+          gap: 16px;
+          align-items: stretch;
+        }
+
+        .alarm-location-chart {
+          width: 100%;
+          height: 240px;
+        }
+
+        .alarm-stats-table-wrap {
+          min-width: 0;
+          overflow: auto;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.02);
+        }
+
+        .alarm-stats-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+        }
+
+        .alarm-stats-table th,
+        .alarm-stats-table td {
+          padding: 10px 12px;
+          text-align: left;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          white-space: nowrap;
+        }
+
+        .alarm-stats-table th {
+          color: var(--text-tertiary);
+          font-weight: 500;
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .alarm-stats-table td {
+          color: var(--text-secondary);
+          font-family: var(--font-mono);
+        }
+
+        .alarm-stats-table td:first-child {
+          color: var(--text-primary);
+          font-family: inherit;
+          font-weight: 500;
+        }
+
+        .alarm-stats-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .alarm-stats-empty {
+          min-height: 240px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted);
+          font-size: 13px;
         }
 
         .alarm-records-toolbar {
@@ -851,11 +971,14 @@ export default function AlarmCenter() {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 0 12px;
+          padding: 0 14px;
           border-bottom: 1px solid var(--border-subtle);
         }
 
         .alarm-records-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
           min-width: 0;
         }
 
@@ -866,207 +989,119 @@ export default function AlarmCenter() {
         }
 
         .alarm-records-title span {
-          display: block;
-          margin-top: 2px;
           color: var(--text-tertiary);
           font-size: 11px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
-        .alarm-table-wrap {
+        .alarm-record-list {
           flex: 1;
           min-height: 0;
           overflow: auto;
-        }
-
-        .alarm-table {
-          width: 100%;
-          border-collapse: collapse;
-          min-width: 1020px;
-        }
-
-        .alarm-table th,
-        .alarm-table td {
-          padding: 9px 12px;
-          border-bottom: 1px solid var(--border-subtle);
-          text-align: left;
-          font-size: 12px;
-          vertical-align: middle;
-        }
-
-        .alarm-table th {
-          position: sticky;
-          top: 0;
-          z-index: 1;
-          background: #111111;
-          color: var(--text-tertiary);
-          font-weight: 500;
-        }
-
-        .alarm-table td {
-          color: var(--text-secondary);
-        }
-
-        .alarm-table tbody tr:hover {
-          background: rgba(255, 255, 255, 0.03);
-        }
-
-        .alarm-sort-button {
-          border: 0;
-          background: transparent;
-          color: inherit;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          font: inherit;
-          padding: 0;
-        }
-
-        .alarm-sort-button em {
-          color: var(--accent);
-          font-size: 10px;
-          font-style: normal;
-        }
-
-        .alarm-level-badge,
-        .alarm-read-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 4px 8px;
-          border-radius: 999px;
-          border: 1px solid;
-          white-space: nowrap;
-        }
-
-        .alarm-level-badge em {
-          color: var(--text-tertiary);
-          font-style: normal;
-        }
-
-        .alarm-pagination {
-          min-height: 42px;
-          padding: 0 12px;
           display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          border-top: 1px solid var(--border-subtle);
-        }
-
-        .alarm-insights-rail {
-          min-height: 0;
-          display: grid;
-          grid-template-rows: 258px minmax(238px, 1fr);
-          gap: 12px;
-        }
-
-        .alarm-insight-panel {
-          min-width: 0;
-          min-height: 0;
-          display: grid;
-          grid-template-rows: 42px minmax(0, 1fr);
-          overflow: hidden;
-        }
-
-        .alarm-panel-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 0 12px;
-          border-bottom: 1px solid var(--border-subtle);
-        }
-
-        .alarm-panel-head h3 {
-          flex-shrink: 0;
-          font-size: 13px;
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .alarm-panel-head span {
-          min-width: 0;
-          color: var(--text-tertiary);
-          font-size: 11px;
-          text-align: right;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .alarm-pie-chart,
-        .alarm-bar-chart {
-          width: 100%;
-          min-height: 0;
-        }
-
-        .alarm-mobile-list {
-          display: none;
           flex-direction: column;
           gap: 10px;
-          padding: 12px;
-          overflow: auto;
+          padding: 12px 14px;
         }
 
-        .alarm-mobile-card {
-          border-radius: 8px;
-          border: 1px solid;
-          background: rgba(255, 255, 255, 0.03);
-          padding: 12px;
-        }
-
-        .alarm-mobile-head {
+        .alarm-record-card {
+          position: relative;
           display: flex;
-          align-items: flex-start;
-          gap: 10px;
-        }
-
-        .alarm-mobile-head > div:nth-child(2) {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .alarm-mobile-head strong {
-          display: block;
-          color: var(--text-primary);
-          font-size: 13px;
-        }
-
-        .alarm-mobile-head span {
-          display: block;
-          margin-top: 3px;
-          color: var(--text-tertiary);
-          font-size: 11px;
-          font-family: var(--font-mono);
-        }
-
-        .alarm-mobile-head em {
-          flex-shrink: 0;
-          font-size: 11px;
-          font-style: normal;
-        }
-
-        .alarm-mobile-icon {
-          width: 30px;
-          height: 30px;
+          align-items: center;
+          gap: 12px;
+          min-height: 64px;
+          padding: 12px 14px 12px 16px;
           border-radius: 8px;
+          border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.03);
+          cursor: pointer;
+          overflow: hidden;
+          transition: background var(--transition-fast), border-color var(--transition-fast);
+        }
+
+        .alarm-record-card:hover {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: rgba(255, 255, 255, 0.14);
+        }
+
+        .alarm-record-card[data-unread='true'] {
+          background: rgba(255, 69, 58, 0.05);
+        }
+
+        .alarm-record-card[data-selected='true'] {
+          border-color: rgba(10, 132, 255, 0.45);
+          background: rgba(10, 132, 255, 0.1);
+        }
+
+        .alarm-record-card:focus-visible {
+          outline: 2px solid var(--accent);
+          outline-offset: -2px;
+        }
+
+        .alarm-record-bar {
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+        }
+
+        .alarm-record-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
         }
 
-        .alarm-mobile-fields {
-          margin-top: 10px;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px 10px;
+        .alarm-record-body {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .alarm-record-body strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.35;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .alarm-record-body p {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 4px 0;
+          margin-top: 4px;
           color: var(--text-tertiary);
-          font-size: 11px;
+          font-size: 12px;
+          font-family: var(--font-mono);
+          line-height: 1.35;
+        }
+
+        .alarm-record-body em {
+          font-style: normal;
+          font-weight: 600;
+        }
+
+        .alarm-record-divider {
+          margin: 0 8px;
+          color: rgba(255, 255, 255, 0.22);
+          font-weight: 400;
+        }
+
+        .alarm-pagination {
+          min-height: 42px;
+          padding: 0 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          border-top: 1px solid var(--border-subtle);
         }
 
         .alarm-empty {
@@ -1079,63 +1114,243 @@ export default function AlarmCenter() {
           color: var(--text-muted);
         }
 
-        @media (max-width: 1540px) {
-          .alarm-workspace {
-            grid-template-columns: 1fr;
-          }
-
-          .alarm-insights-rail {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-template-rows: 238px;
-          }
+        .alarm-detail-backdrop {
+          position: fixed;
+          z-index: 1000;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(0, 0, 0, 0.68);
+          backdrop-filter: blur(4px);
+          animation: alarm-detail-fade-in 160ms ease-out;
         }
 
-        @media (max-width: 1260px) {
-          .alarm-filter-row {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-          }
+        .alarm-detail-modal {
+          width: min(900px, 100%);
+          max-height: min(760px, calc(100vh - 48px));
+          overflow: auto;
+          padding: 28px;
+          border: 1px solid rgba(10, 132, 255, 0.42);
+          border-radius: 12px;
+          background: linear-gradient(145deg, #111a25 0%, #0c1118 100%);
+          box-shadow: 0 22px 80px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.035) inset;
+          animation: alarm-detail-rise-in 180ms ease-out;
+        }
+
+        .alarm-detail-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 18px;
+        }
+
+        .alarm-detail-head h2,
+        .alarm-detail-head h3 {
+          color: var(--text-primary);
+          font-size: 18px;
+          font-weight: 600;
+        }
+
+        .alarm-detail-head p {
+          margin-top: 5px;
+          color: var(--text-tertiary);
+          font-size: 13px;
+        }
+
+        .alarm-detail-close {
+          min-width: 54px;
+          min-height: 36px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 7px;
+          padding: 6px 12px;
+          background: rgba(255, 255, 255, 0.055);
+          color: var(--text-primary);
+          cursor: pointer;
+          font-size: 13px;
+        }
+
+        .alarm-detail-close:hover {
+          border-color: rgba(10, 132, 255, 0.55);
+          background: rgba(10, 132, 255, 0.13);
+        }
+
+        .alarm-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px 24px;
+        }
+
+        .alarm-detail-grid div {
+          min-width: 0;
+        }
+
+        .alarm-detail-grid span {
+          display: block;
+          color: var(--text-tertiary);
+          font-size: 12px;
+        }
+
+        .alarm-detail-grid strong {
+          display: block;
+          margin-top: 5px;
+          color: var(--text-primary);
+          font-family: var(--font-mono);
+          font-size: 14px;
+          font-weight: 500;
+          overflow-wrap: anywhere;
+        }
+
+        .alarm-process-panel {
+          margin-top: 20px;
+          padding-top: 18px;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .alarm-process-panel h4 {
+          color: var(--text-primary);
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .alarm-process-fields {
+          display: grid;
+          grid-template-columns: 180px minmax(0, 1fr);
+          gap: 12px;
+        }
+
+        .alarm-process-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .alarm-process-field span {
+          color: var(--text-tertiary);
+          font-size: 12px;
+        }
+
+        .alarm-process-field input,
+        .alarm-process-field textarea {
+          width: 100%;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-primary);
+          font-size: 13px;
+          padding: 8px 10px;
+          outline: none;
+          font-family: inherit;
+        }
+
+        .alarm-process-field textarea {
+          min-height: 84px;
+          resize: vertical;
+          line-height: 1.45;
+        }
+
+        .alarm-process-field input:focus,
+        .alarm-process-field textarea:focus {
+          border-color: rgba(10, 132, 255, 0.62);
+        }
+
+        .alarm-process-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .alarm-process-message {
+          font-size: 12px;
+          color: var(--text-tertiary);
+        }
+
+        .alarm-process-message[data-tone='error'] {
+          color: var(--status-error);
+        }
+
+        .alarm-process-message[data-tone='success'] {
+          color: var(--status-success, #30d158);
+        }
+
+        .alarm-process-message[data-tone='warning'] {
+          color: var(--status-warning);
+        }
+
+        @keyframes alarm-detail-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes alarm-detail-rise-in {
+          from { opacity: 0; transform: translateY(10px) scale(0.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         @media (max-width: 860px) {
-          .alarm-filter-row,
-          .alarm-insights-rail {
-            grid-template-columns: 1fr;
-          }
-
-          .alarm-status-row,
+          .alarm-control-panel,
+          .alarm-pagination,
           .alarm-records-toolbar,
-          .alarm-pagination {
+          .alarm-stats-toolbar {
             align-items: flex-start;
             flex-direction: column;
           }
 
-          .alarm-actions {
-            justify-content: flex-start;
+          .alarm-field {
+            width: 100%;
           }
 
-          .alarm-table-wrap {
-            display: none;
+          .alarm-stats-body {
+            grid-template-columns: 1fr;
           }
 
-          .alarm-mobile-list {
-            display: flex;
+          .alarm-detail-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .alarm-process-fields {
+            grid-template-columns: 1fr;
+          }
+
+          .alarm-detail-backdrop {
+            padding: 14px;
+          }
+
+          .alarm-detail-modal {
+            padding: 20px;
+          }
+
+          .alarm-record-body strong,
+          .alarm-record-body p {
+            white-space: normal;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .alarm-detail-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
 
-      <form
-        className="alarm-control-panel"
-        onSubmit={(event) => {
-          event.preventDefault();
-          applyFilters();
-        }}
-      >
+      <div className="alarm-control-panel">
         <div className="alarm-filter-row">
           <label className="alarm-field">
             <span>区域</span>
-            <select value={draftFilters.locationName} onChange={(event) => updateDraftFilter('locationName', event.target.value)}>
+            <select
+              value={draftFilters.locationName}
+              onChange={(event) => updateLocation(event.target.value)}
+            >
               <option value="">全部区域</option>
-              {alarmPageLocationNames.map((locationName) => (
+              {locationNames.map((locationName) => (
                 <option key={locationName} value={locationName}>
                   {locationName}
                 </option>
@@ -1143,220 +1358,132 @@ export default function AlarmCenter() {
             </select>
           </label>
 
-          <label className="alarm-field">
-            <span>状态</span>
-            <select value={draftFilters.isRead} onChange={(event) => updateDraftFilter('isRead', event.target.value as AlarmReadFilter)}>
-              <option value="all">全部状态</option>
-              <option value="0">未读</option>
-              <option value="1">已读</option>
-            </select>
-          </label>
-
-          <label className="alarm-field">
-            <span>等级</span>
-            <select value={draftFilters.level} onChange={(event) => updateDraftFilter('level', event.target.value as AlarmLevelFilter)}>
-              <option value="all">全部等级</option>
-              <option value="1">1级 一般</option>
-              <option value="2">2级 严重</option>
-            </select>
-          </label>
-
-          <label className="alarm-field">
-            <span>开始时间</span>
-            <AppDateTimePicker
-              value={parseAppDateTime(draftFilters.startTime)}
-              onChange={(value) => updateDraftFilter('startTime', formatAppDateTime(value))}
-              aria-label="开始时间"
-            />
-          </label>
-
-          <label className="alarm-field">
-            <span>结束时间</span>
-            <AppDateTimePicker
-              value={parseAppDateTime(draftFilters.endTime)}
-              onChange={(value) => updateDraftFilter('endTime', formatAppDateTime(value))}
-              aria-label="结束时间"
-            />
-          </label>
-
-          <div className="alarm-actions">
-            <button className="alarm-text-button alarm-primary-button" type="submit" data-active={isPending} disabled={isPending}>
-              <Search size={14} />
-              {isPending ? '查询中' : '查询'}
-            </button>
-            <button className="alarm-text-button" type="button" onClick={resetFilters}>
-              <RefreshCw size={14} />
-              重置
-            </button>
-          </div>
-        </div>
-
-        <div className="alarm-status-row">
-          <div className="alarm-shortcuts" aria-label="常用筛选">
+          <div className="alarm-shortcuts" aria-label="阅读状态筛选">
             <button
               className="alarm-pill-button"
               type="button"
-              data-active={!appliedFilters.locationName && appliedFilters.isRead === 'all' && appliedFilters.level === 'all'}
-              onClick={resetFilters}
+              data-active={draftFilters.isRead === 'all'}
+              onClick={() => updateReadFilter('all')}
             >
               全部
             </button>
             <button
               className="alarm-pill-button"
               type="button"
-              data-active={appliedFilters.isRead === '0'}
-              onClick={() => applyShortcut({ ...draftFilters, isRead: appliedFilters.isRead === '0' ? 'all' : '0' })}
+              data-active={draftFilters.isRead === '0'}
+              onClick={() => updateReadFilter('0')}
             >
               未读
             </button>
             <button
               className="alarm-pill-button"
               type="button"
-              data-active={appliedFilters.level === '2'}
-              onClick={() => applyShortcut({ ...draftFilters, level: appliedFilters.level === '2' ? 'all' : '2' })}
+              data-active={draftFilters.isRead === '1'}
+              onClick={() => updateReadFilter('1')}
             >
-              2级
+              已读
             </button>
           </div>
+        </div>
 
-          <div className="alarm-filter-summary" title={apiPath}>
-            {appliedFilterLabels.map((label) => (
-              <span className="alarm-condition-chip" key={label}>
-                {label}
-              </span>
-            ))}
+        <div className="alarm-actions">
+          <button
+            className="alarm-text-button alarm-query-button"
+            type="button"
+            onClick={submitQuery}
+            disabled={apiStatus === 'loading' || statsStatus === 'loading'}
+          >
+            {apiStatus === 'loading' || statsStatus === 'loading' ? '查询中' : '查询'}
+          </button>
+        </div>
+
+        {apiMessage && (
+          <div className="alarm-api-message" role="status">
+            {apiStatus === 'fallback' ? '数据加载异常，已展示备用数据' : apiMessage}
           </div>
+        )}
+        {statsMessage && (
+          <div className="alarm-api-message" role="status">
+            {statsStatus === 'fallback'
+              ? '区域统计加载异常，已展示备用数据'
+              : statsMessage}
+          </div>
+        )}
+      </div>
 
-          {apiMessage && (
-            <div className="alarm-api-message" role="status">
-              {apiStatus === 'fallback' ? `接口未连通，当前展示文档样例数据：${apiMessage}` : apiMessage}
-            </div>
-          )}
-
-          <div className="alarm-metric-row">
-            <MetricChip label="记录" value={result.total} />
-            <MetricChip label="未读" value={unreadCount} tone="danger" />
-            <MetricChip label="2级" value={severeCount} tone="warning" />
-            <MetricChip label="最高温" value={maxTemp === '--' ? '--' : `${maxTemp}℃`} tone="info" />
+      <div className="alarm-stats-panel">
+        <div className="alarm-stats-toolbar">
+          <div className="alarm-stats-title">
+            <AlertTriangle size={16} color="var(--status-warning)" />
+            <h2>告警区域分布</h2>
+            <span>
+              共 {locationStatSummary.alarmCount} 条 · 未读 {locationStatSummary.unreadCount} 条
+              {statsStatus === 'loading' ? ' · 统计中' : ''}
+            </span>
+          </div>
+          <div className="alarm-stats-meta">
+            {timeRange.startTime} ~ {timeRange.endTime}
           </div>
         </div>
-      </form>
 
-      <div className="alarm-workspace">
-        <div className="alarm-records-panel">
-          <div className="alarm-records-toolbar">
-            <div className="alarm-records-title">
-              <h2>告警记录</h2>
-              <span title={apiPath}>
-                {getSortLabel(sortState.key) ? `按${sortState.key === 'eventTimeStamp' ? '报警时间' : sortState.key === 'maxTemp' ? '最高温' : sortState.key === 'isRead' ? '状态' : sortState.key === 'level' ? '等级' : '区域'}${getSortLabel(sortState.key)}` : '当前结果'}
-              </span>
+        {locationStats.length === 0 ? (
+          <div className="alarm-stats-empty">
+            {statsStatus === 'loading' ? '正在加载区域统计…' : '暂无区域统计数据'}
+          </div>
+        ) : (
+          <div className="alarm-stats-body">
+            <AlarmLocationChart option={locationChartOption} label="告警区域分布" />
+            <div className="alarm-stats-table-wrap">
+              <table className="alarm-stats-table">
+                <thead>
+                  <tr>
+                    <th>区域</th>
+                    <th>告警数</th>
+                    <th>未读</th>
+                    <th>最高温</th>
+                    <th>最低温</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...locationStats]
+                    .sort((left, right) => right.alarmCount - left.alarmCount)
+                    .map((stat) => (
+                      <tr key={stat.locationName}>
+                        <td>{stat.locationName}</td>
+                        <td>{stat.alarmCount}</td>
+                        <td>{stat.unreadCount}</td>
+                        <td>{stat.maxTemp.toFixed(1)}℃</td>
+                        <td>{stat.minTemp.toFixed(1)}℃</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-tertiary)', flexShrink: 0 }}>
-              每页
-              <select
-                className="alarm-page-size"
-                value={draftFilters.pageSize}
-                onChange={(event) => {
-                  const nextPageSize = Number(event.target.value);
-                  const nextFilters = { ...draftFilters, pageSize: nextPageSize };
-                  setDraftFilters(nextFilters);
-                  applyFilters(nextFilters);
-                }}
-              >
-                {[10, 20, 50].map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
+        )}
+      </div>
 
-          <div className="alarm-table-wrap">
-            <table className="alarm-table">
-              <thead>
-                <tr>
-                  <th>事件ID</th>
-                  <th aria-sort={sortState.key === 'locationName' ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    {renderSortHeader('locationName', '区域')}
-                  </th>
-                  <th>通道</th>
-                  <th>报警事项</th>
-                  <th aria-sort={sortState.key === 'level' ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    {renderSortHeader('level', '等级')}
-                  </th>
-                  <th aria-sort={sortState.key === 'maxTemp' ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    {renderSortHeader('maxTemp', '温度/阈值')}
-                  </th>
-                  <th>次数</th>
-                  <th aria-sort={sortState.key === 'isRead' ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    {renderSortHeader('isRead', '状态')}
-                  </th>
-                  <th aria-sort={sortState.key === 'eventTimeStamp' ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                    {renderSortHeader('eventTimeStamp', '报警时间')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.list.map((record) => {
-                  const readMeta = getReadMeta(record.isRead);
-
-                  return (
-                    <tr key={record.id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
-                        {record.eventId}
-                      </td>
-                      <td>{record.locationName}</td>
-                      <td>
-                        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                          {record.channelName}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <Thermometer size={14} color="var(--text-tertiary)" />
-                          <span style={{ color: 'var(--text-primary)' }}>{record.ruleType}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <AlarmLevelBadge level={record.level} />
-                      </td>
-                      <td>
-                        <div style={{ display: 'grid', gap: 2, fontFamily: 'var(--font-mono)', lineHeight: 1.25 }}>
-                          <span style={{ color: '#5eead4' }}>
-                            均 {record.avgTemp.toFixed(1)}℃ / 低 {record.minTemp.toFixed(1)}℃
-                          </span>
-                          <span style={{ color: 'var(--status-warning)' }}>
-                            高 {record.maxTemp.toFixed(1)}℃ / 阈 {record.thresholdTemp.toFixed(1)}℃
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ fontFamily: 'var(--font-mono)' }}>{record.num}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <ReadStateBadge isRead={record.isRead} />
-                          <span style={{ color: readMeta.color, fontSize: 11 }}>{readMeta.action}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-mono)' }}>
-                          <Clock size={13} color="var(--text-muted)" />
-                          {record.eventTimeStamp}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <div className="alarm-records-panel">
+        <div className="alarm-records-toolbar">
+          <div className="alarm-records-title">
+            <AlertTriangle size={16} color="var(--status-warning)" />
+            <h2>告警记录列表</h2>
+            <span>共 {result.total} 条 · 近 7 天</span>
           </div>
+        </div>
 
-          <div className="alarm-mobile-list">
-            {result.list.map((record) => (
-              <RecordMobileCard key={record.id} record={record} />
-            ))}
-          </div>
+        <div className="alarm-record-list">
+          {result.list.map((record) => {
+            const recordKey = getRecordKey(record);
+            return (
+              <AlarmRecordCard
+                key={recordKey}
+                record={record}
+                selected={selectedRecordId === recordKey}
+                onOpen={openAlarmDetail}
+              />
+            );
+          })}
 
           {result.list.length === 0 && (
             <div className="alarm-empty">
@@ -1364,56 +1491,133 @@ export default function AlarmCenter() {
               <span style={{ fontSize: 13 }}>暂无符合条件的告警记录</span>
             </div>
           )}
-
-          <div className="alarm-pagination">
-            <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-              显示 {startIndex}-{endIndex}，共 {result.total} 条
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                className="alarm-icon-button"
-                type="button"
-                onClick={() => setPageNum((current) => Math.max(1, current - 1))}
-                disabled={currentPage <= 1}
-                title="上一页"
-              >
-                <ChevronLeft size={15} />
-              </button>
-              <span style={{ minWidth: 72, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
-                {currentPage} / {totalPages}
-              </span>
-              <button
-                className="alarm-icon-button"
-                type="button"
-                onClick={() => setPageNum((current) => Math.min(totalPages, current + 1))}
-                disabled={currentPage >= totalPages}
-                title="下一页"
-              >
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          </div>
         </div>
 
-        <aside className="alarm-insights-rail" aria-label="告警统计">
-          <section className="alarm-insight-panel">
-            <div className="alarm-panel-head">
-              <h3>区域占比</h3>
-              <span>{totalByLocation} 条</span>
-            </div>
-            <AlarmEChart className="alarm-pie-chart" option={pieOption} label="区域告警占比图" onSelectLocation={selectLocationFromChart} />
-          </section>
+        <div className="alarm-pagination">
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            显示 {startIndex}-{endIndex}，共 {result.total} 条
+          </div>
 
-          <section className="alarm-insight-panel">
-            <div className="alarm-panel-head">
-              <h3>区域排行</h3>
-              <span>点击区域筛选</span>
-            </div>
-            <AlarmEChart className="alarm-bar-chart" option={barOption} label="区域告警数量排行图" onSelectLocation={selectLocationFromChart} />
-          </section>
-        </aside>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="alarm-icon-button"
+              type="button"
+              onClick={() => setPageNum((current) => Math.max(1, current - 1))}
+              disabled={currentPage <= 1}
+              title="上一页"
+            >
+              <ChevronLeft size={15} />
+            </button>
+            <span style={{ minWidth: 72, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              className="alarm-icon-button"
+              type="button"
+              onClick={() => setPageNum((current) => Math.min(totalPages, current + 1))}
+              disabled={currentPage >= totalPages}
+              title="下一页"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
       </div>
+
+      {selectedRecord && (
+        <div className="alarm-detail-backdrop" role="presentation" onMouseDown={closeAlarmDetail}>
+          <section
+            className="alarm-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="alarm-detail-title"
+            onMouseDown={(event) => event.stopPropagation()}
+            style={{
+              borderColor: selectedAlarmLevelMeta.modalBorder,
+              background: selectedAlarmLevelMeta.modalBackground,
+              boxShadow: '0 22px 80px rgba(0, 0, 0, 0.62)',
+            }}
+          >
+            <div className="alarm-detail-head">
+              <div>
+                <h3 id="alarm-detail-title">告警详情</h3>
+                <p>
+                  {selectedRecord.processTime
+                    ? '已处理告警，可补充提交处理记录'
+                    : isSelectedRecordLocallyRead
+                      ? '未处理告警 · 已在当前页面标记为已读'
+                      : '未处理告警 · 填写处理信息后提交'}
+                </p>
+              </div>
+              <button className="alarm-detail-close" type="button" onClick={closeAlarmDetail} aria-label="关闭告警详情">
+                关闭
+              </button>
+            </div>
+            <div className="alarm-detail-grid">
+              <div><span>设备 ID</span><strong>{selectedRecord.devId}</strong></div>
+              <div><span>区域 / 通道</span><strong>{selectedRecord.locationName} / {selectedRecord.channelName}</strong></div>
+              <div><span>报警事项 / 等级</span><strong>{selectedRecord.ruleType} / {selectedRecord.level}级</strong></div>
+              <div><span>报警时间</span><strong>{selectedRecord.eventTimeStamp}</strong></div>
+              <div><span>温度（均/低/高）</span><strong>{selectedRecord.avgTemp.toFixed(1)} / {selectedRecord.minTemp.toFixed(1)} / {selectedRecord.maxTemp.toFixed(1)} ℃</strong></div>
+              <div><span>阈值 / 次数</span><strong>{selectedRecord.thresholdTemp.toFixed(1)} ℃ / {selectedRecord.num}</strong></div>
+              <div><span>处理人</span><strong>{selectedRecord.processor ?? '-'}</strong></div>
+              <div><span>处理时间</span><strong>{selectedRecord.processTime ?? '-'}</strong></div>
+              <div><span>处理内容</span><strong>{selectedRecord.processContent ?? '-'}</strong></div>
+            </div>
+
+            <div className="alarm-process-panel">
+              <h4>事件处理</h4>
+              <div className="alarm-process-fields">
+                <label className="alarm-process-field">
+                  <span>处理人</span>
+                  <input
+                    value={processor}
+                    onChange={(event) => setProcessor(event.target.value)}
+                    placeholder="例如：张三"
+                    disabled={processStatus === 'loading'}
+                    aria-label="处理人"
+                  />
+                </label>
+                <label className="alarm-process-field">
+                  <span>处理内容</span>
+                  <textarea
+                    value={processContent}
+                    onChange={(event) => setProcessContent(event.target.value)}
+                    placeholder="例如：已现场排查，恢复正常"
+                    disabled={processStatus === 'loading'}
+                    aria-label="处理内容"
+                  />
+                </label>
+              </div>
+              <div className="alarm-process-actions">
+                <span
+                  className="alarm-process-message"
+                  data-tone={
+                    processStatus === 'error'
+                      ? 'error'
+                      : processStatus === 'success' || processStatus === 'mock'
+                        ? 'success'
+                        : processStatus === 'fallback'
+                          ? 'warning'
+                          : undefined
+                  }
+                  role="status"
+                >
+                  {processMessage || '提交后将保存处理记录'}
+                </span>
+                <button
+                  className="alarm-text-button alarm-query-button"
+                  type="button"
+                  onClick={() => void submitProcess()}
+                  disabled={processStatus === 'loading'}
+                >
+                  {processStatus === 'loading' ? '提交中' : '提交处理'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

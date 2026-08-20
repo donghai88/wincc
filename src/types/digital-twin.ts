@@ -16,6 +16,7 @@ export interface DigitalTwinTemperaturePoint {
 export interface ModbusTemperatureFeed {
   status: ModbusFeedStatus;
   point: DigitalTwinTemperaturePoint | null;
+  points: DigitalTwinTemperaturePoint[];
   message: string;
 }
 

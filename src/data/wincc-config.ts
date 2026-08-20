@@ -1,5 +1,5 @@
 // WinCC 系统配置数据 - 钢铁冶金行业
-import type { WinCCInstance, DeviceTypeConfig, TemplateConfig, DeviceType, LadleMetrics, IronLevelMetrics, AlarmInfo, HotMetalTroughMetrics, AlarmPageData, AlarmPageQuery, AlarmPageRecord, AlarmLocationStat, AlarmLocationStatQuery, ApiSuccessResponse } from '@/types/template';
+import type { WinCCInstance, DeviceTypeConfig, TemplateConfig, DeviceType, LadleMetrics, IronLevelMetrics, AlarmInfo, HotMetalTroughMetrics, AlarmPageData, AlarmPageQuery, AlarmPageRecord, AlarmBatchProcessRequest, AlarmLocationStat, AlarmLocationStatQuery, ApiSuccessResponse } from '@/types/template';
 
 // 设备类型配置
 export const deviceTypes: DeviceTypeConfig[] = [
@@ -382,6 +382,64 @@ export const documentAlarmPageRecords: AlarmPageRecord[] = [
   },
 ];
 
+/**
+ * Local-only alarm fixture used when the frontend runs in Mock mode (or uses
+ * Mock as a fallback). Keep the documented one-row response above intact: it
+ * is a contract example, whereas this data lets the UI exercise paging,
+ * filtering, unread states, and the region charts with realistic volume.
+ */
+const mockAlarmSeeds = [
+  ['位置3', '11_1', '高温大于', '2', 41.8, 39.6, 58.4, 48.0, 0],
+  ['位置1', '03_2', '温度波动异常', '1', 35.7, 31.8, 45.2, 42.0, 0],
+  ['位置2', '07_1', '高温大于', '2', 46.1, 43.5, 62.8, 55.0, 0],
+  ['位置4', '14_1', '低温小于', '1', 22.8, 16.9, 29.4, 20.0, 1],
+  ['位置5', '06_3', '温度波动异常', '1', 37.2, 29.8, 47.5, 15.0, 0],
+  ['位置1', '02_1', '高温大于', '1', 38.4, 34.2, 49.3, 45.0, 1],
+  ['位置3', '12_2', '低温小于', '2', 19.7, 13.8, 26.6, 18.0, 0],
+  ['位置2', '09_1', '高温大于', '1', 42.5, 38.6, 51.7, 50.0, 1],
+  ['位置4', '15_2', '温度波动异常', '2', 33.1, 24.6, 54.9, 20.0, 0],
+  ['位置5', '08_1', '高温大于', '1', 40.3, 36.4, 46.8, 44.0, 1],
+  ['位置1', '05_2', '低温小于', '1', 24.6, 18.7, 31.5, 22.0, 0],
+  ['位置3', '10_1', '高温大于', '2', 48.2, 44.8, 66.3, 58.0, 1],
+  ['位置2', '04_3', '温度波动异常', '1', 34.9, 27.5, 48.1, 18.0, 0],
+  ['位置4', '16_1', '高温大于', '1', 39.8, 35.4, 47.9, 46.0, 1],
+  ['位置5', '01_2', '低温小于', '2', 18.9, 12.6, 25.8, 17.0, 0],
+  ['位置1', '13_1', '高温大于', '1', 43.6, 40.1, 53.2, 51.0, 1],
+  ['位置3', '11_2', '温度波动异常', '1', 36.4, 28.9, 49.6, 19.0, 0],
+  ['位置2', '07_2', '低温小于', '1', 23.5, 17.2, 30.4, 21.0, 1],
+  ['位置4', '14_2', '高温大于', '2', 45.9, 41.6, 61.5, 54.0, 0],
+  ['位置5', '06_1', '温度波动异常', '1', 32.7, 25.1, 43.8, 16.0, 1],
+] as const satisfies ReadonlyArray<readonly [string, string, string, AlarmPageRecord['level'], number, number, number, number, AlarmPageRecord['isRead']]>;
+
+export const mockAlarmPageRecords: AlarmPageRecord[] = mockAlarmSeeds.map((seed, index) => {
+  const [locationName, channelName, ruleType, level, avgTemp, minTemp, maxTemp, thresholdTemp, isRead] = seed;
+  const sequence = String(index + 1).padStart(2, '0');
+  const seconds = String(55 - index * 2).padStart(2, '0');
+  const eventTimeStamp = `2026-06-30 08:27:${seconds}`;
+  const isProcessed = isRead === 1;
+
+  return {
+    id: 100 + index,
+    eventId: `mock-alarm-20260630-${sequence}`,
+    alarmId: `mock-alarm-20260630-${sequence}`,
+    eventTimeStamp,
+    devId: `mock-device-${String((index % 5) + 1).padStart(2, '0')}`,
+    channelName,
+    num: (index % 4) + 1,
+    ruleType,
+    level,
+    avgTemp,
+    minTemp,
+    maxTemp,
+    thresholdTemp,
+    locationName,
+    isRead,
+    processor: isProcessed ? ['张三', '李四', '王五'][index % 3] : null,
+    processContent: isProcessed ? '已现场复核，设备运行正常' : null,
+    processTime: isProcessed ? `2026-06-30 08:${String(28 + (index % 12)).padStart(2, '0')}:00` : null,
+  };
+});
+
 const createSuccessResponse = <T,>(data: T): ApiSuccessResponse<T> => ({
   msg: '操作成功',
   code: 200,
@@ -439,7 +497,7 @@ export function queryAlarmPage(query: AlarmPageQuery): AlarmPageData {
     };
   }
 
-  const filtered = documentAlarmPageRecords.filter((record) => {
+  const filtered = mockAlarmPageRecords.filter((record) => {
     if (query.locationName && record.locationName !== query.locationName) return false;
     if (query.level && record.level !== query.level) return false;
     if (query.isRead !== undefined && record.isRead !== query.isRead) return false;
@@ -478,9 +536,85 @@ export function buildAlarmPageApiPath(query: AlarmPageQuery) {
   return `/alarm/page?${params.toString()}`;
 }
 
+const formatProcessTime = (date = new Date()) => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(' ');
+};
+
+const applyAlarmBatchProcess = (
+  records: AlarmPageRecord[],
+  request: AlarmBatchProcessRequest,
+  processTime: string,
+) => {
+  const eventIds = new Set(request.eventIds);
+  records.forEach((record) => {
+    if (!eventIds.has(record.eventId)) return;
+    record.isRead = 1;
+    record.processor = request.processor;
+    record.processContent = request.processContent;
+    record.processTime = processTime;
+  });
+};
+
+/** Local mock for POST /alarm/batch-process — mirrors the sheet contract. */
+export function processAlarmBatch(request: AlarmBatchProcessRequest): boolean {
+  const eventIds = request.eventIds.map((id) => id.trim()).filter(Boolean);
+  const processor = request.processor.trim();
+  const processContent = request.processContent.trim();
+
+  if (eventIds.length === 0) throw new Error('eventIds 不能为空');
+  if (!processor) throw new Error('处理人不能为空');
+  if (!processContent) throw new Error('处理内容不能为空');
+
+  const normalized: AlarmBatchProcessRequest = { eventIds, processor, processContent };
+  const processTime = formatProcessTime();
+  applyAlarmBatchProcess(mockAlarmPageRecords, normalized, processTime);
+  applyAlarmBatchProcess(documentAlarmPageRecords, normalized, processTime);
+  return true;
+}
+
+export function processAlarmBatchApi(request: AlarmBatchProcessRequest): ApiSuccessResponse<boolean> {
+  return createSuccessResponse(processAlarmBatch(request));
+}
+
+export function buildAlarmBatchProcessApiPath() {
+  return '/alarm/batch-process';
+}
+
 export function queryAlarmStatsByLocation(query: AlarmLocationStatQuery): AlarmLocationStat[] {
-  void query;
-  return documentAlarmLocationStats.map((stat) => ({ ...stat }));
+  const recordsInRange = mockAlarmPageRecords.filter((record) => {
+    if (query.startTime && record.eventTimeStamp < query.startTime) return false;
+    if (query.endTime && record.eventTimeStamp > query.endTime) return false;
+    return true;
+  });
+
+  return Array.from(
+    recordsInRange.reduce((stats, record) => {
+      const current = stats.get(record.locationName) ?? {
+        locationName: record.locationName,
+        alarmCount: 0,
+        unreadCount: 0,
+        maxTemp: Number.NEGATIVE_INFINITY,
+        minTemp: Number.POSITIVE_INFINITY,
+      };
+
+      current.alarmCount += 1;
+      current.unreadCount += record.isRead === 0 ? 1 : 0;
+      current.maxTemp = Math.max(current.maxTemp, record.maxTemp);
+      current.minTemp = Math.min(current.minTemp, record.minTemp);
+      stats.set(record.locationName, current);
+      return stats;
+    }, new Map<string, AlarmLocationStat>()).values()
+  )
+    .map((stat) => ({
+      ...stat,
+      maxTemp: Number.isFinite(stat.maxTemp) ? stat.maxTemp : 0,
+      minTemp: Number.isFinite(stat.minTemp) ? stat.minTemp : 0,
+    }))
+    .sort((left, right) => left.locationName.localeCompare(right.locationName, 'zh-CN'));
 }
 
 export function queryAlarmStatsByLocationApi(query: AlarmLocationStatQuery): ApiSuccessResponse<AlarmLocationStat[]> {

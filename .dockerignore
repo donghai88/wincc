@@ -1,0 +1,8 @@
+# 运行镜像只需要静态导出产物和 Nginx 配置。
+**
+!out/
+!out/**
+!docker/
+!docker/**
+!Dockerfile
+!.dockerignore

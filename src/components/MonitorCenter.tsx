@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import {
-  apiMockMode,
-  apiMockModeLabel,
   buildApiUrl,
   canUseMockData,
   isMockOnly,
@@ -11,10 +9,10 @@ import {
 } from '@/lib/api-config';
 import {
   Video,
-  Activity,
   Clock,
   Power,
 } from 'lucide-react';
+import ZlMediaKitWebRtcPlayer from '@/components/ZlMediaKitWebRtcPlayer';
 
 type ThermalCameraFeedStatus = 'online' | 'standby';
 type ApiStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
@@ -30,6 +28,7 @@ interface ThermalCameraFeed {
   flv: string;
   wsFlv: string;
   webrtc: string;
+  pavUrl: string;
   rtmp: string;
   rtsp: string;
 }
@@ -50,10 +49,12 @@ const DOCUMENT_THERMAL_CAMERA_STREAMS = [
   { displayName: '15_1', deviceId: '2065241382175506494', streamId: '2065241382175506494_0-0' },
 ] as const;
 
+/** Mock-only LAN URLs for bundled samples. Live API must return real play URLs. */
 const buildThermalStreamUrls = (streamId: string) => ({
   flv: streamId ? `https://192.168.1.202:7443/rtp/${streamId}.live.flv` : '',
   wsFlv: streamId ? `wss://192.168.1.202:7443/rtp/${streamId}.live.flv` : '',
   webrtc: streamId ? `https://192.168.1.202:7443/index/api/webrtc?app=rtp&stream=${streamId}&type=play` : '',
+  pavUrl: '',
   rtmp: streamId ? `rtmp://192.168.1.202:11935/rtp/${streamId}` : '',
   rtsp: streamId ? `rtsp://192.168.1.202:8554/rtp/${streamId}` : '',
 });
@@ -77,7 +78,9 @@ const documentThermalCameraFeeds: ThermalCameraFeed[] = Array.from({ length: 16 
 
 const readString = (record: Record<string, unknown>, key: string) => {
   const value = record[key];
-  return typeof value === 'string' ? value : '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
 };
 
 const readNumber = (record: Record<string, unknown>, key: string) => {
@@ -89,10 +92,18 @@ const extractStreamId = (record: Record<string, unknown>) => {
   const explicit = readString(record, 'streamId') || readString(record, 'stream');
   if (explicit) return explicit;
 
-  const sourceUrl = readString(record, 'webrtc') || readString(record, 'flv') || readString(record, 'rtsp');
-  const match = sourceUrl.match(/rtp\/([^/?]+?)(?:\.live\.[a-z]+)?(?:[/?]|$)/i);
+  const sourceUrl = readString(record, 'webrtc')
+    || readString(record, 'pavUrl')
+    || readString(record, 'flv')
+    || readString(record, 'rtsp');
+  const match = sourceUrl.match(/(?:stream=|rtp\/)([^/?&]+?)(?:\.live\.[a-z]+)?(?:[/?&]|$)/i);
   return match?.[1] ?? '';
 };
+
+/** Prefer ZLMediaKit webrtc play URL; fall back to pavUrl (智能帧) when provided. */
+const pickPlayableStreamUrl = (record: Record<string, unknown>) => (
+  readString(record, 'webrtc') || readString(record, 'pavUrl')
+);
 
 const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
   const data = unwrapApiData(payload);
@@ -107,8 +118,15 @@ const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
       : {};
     const streamId = extractStreamId(record);
     const deviceId = readString(record, 'deviceId') || readString(record, 'deviceID');
-    const fallbackUrls = buildThermalStreamUrls(streamId);
-    const isConfigured = Boolean(deviceId || streamId || readString(record, 'flv'));
+    const webrtc = pickPlayableStreamUrl(record);
+    const flv = readString(record, 'flv');
+    const wsFlv = readString(record, 'wsFlv');
+    const pavUrl = readString(record, 'pavUrl');
+    const rtmp = readString(record, 'rtmp');
+    const rtsp = readString(record, 'rtsp');
+    // Live list must carry real play URLs from /device/live (wrapped play fields).
+    // Do not invent LAN hosts from streamId — that breaks test/prod environments.
+    const isConfigured = Boolean(webrtc || flv || streamId || deviceId);
 
     return {
       slot: index + 1,
@@ -118,11 +136,12 @@ const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
       streamId,
       delayed: readNumber(record, 'delayed') ?? (isConfigured ? 1 : 0),
       status: isConfigured ? 'online' : 'standby',
-      flv: readString(record, 'flv') || fallbackUrls.flv,
-      wsFlv: readString(record, 'wsFlv') || fallbackUrls.wsFlv,
-      webrtc: readString(record, 'webrtc') || fallbackUrls.webrtc,
-      rtmp: readString(record, 'rtmp') || fallbackUrls.rtmp,
-      rtsp: readString(record, 'rtsp') || fallbackUrls.rtsp,
+      flv,
+      wsFlv,
+      webrtc,
+      pavUrl,
+      rtmp,
+      rtsp,
     };
   });
 };
@@ -142,7 +161,7 @@ function renderThermalCameraCard(
         ? 'rgba(255, 255, 255, 0.46)'
         : 'var(--text-muted)';
     const statusText = isLive ? '在线' : isStandby ? '待接入' : '已停用';
-    const primaryStream = camera.webrtc || camera.flv || '未配置';
+    const streamStateText = camera.webrtc ? '已配置' : '未配置';
     const switchLabel = `${isEnabled ? '关闭' : '开启'}热成像 ${camera.displayName}`;
 
     return (
@@ -220,7 +239,8 @@ function renderThermalCameraCard(
                   textOverflow: 'ellipsis',
                 }}
               >
-                CH {String(camera.slot).padStart(2, '0')} · {camera.channelId || 'UNASSIGNED'}
+                通道 {String(camera.slot).padStart(2, '0')}
+                {camera.channelId ? ` · ${camera.channelId}` : ' · 未分配'}
               </div>
             </div>
           </div>
@@ -288,87 +308,11 @@ function renderThermalCameraCard(
             overflow: 'hidden',
           }}
         >
-          {isLive ? (
-            <>
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(135deg, rgba(13, 148, 136, 0.2), rgba(10, 132, 255, 0.1) 48%, rgba(255, 69, 58, 0.12))',
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 9px), repeating-linear-gradient(90deg, rgba(10,132,255,0.08) 0 1px, transparent 1px 28px)',
-                  opacity: 0.72,
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 12,
-                  border: '1px solid rgba(255, 255, 255, 0.14)',
-                  borderRadius: 6,
-                }}
-              />
-              <div
-                className="thermal-scan-line"
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: '34%',
-                  background: 'linear-gradient(180deg, transparent, rgba(10, 132, 255, 0.2), transparent)',
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '10%',
-                  right: '10%',
-                  bottom: '17%',
-                  height: '45%',
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(10, minmax(0, 1fr))',
-                  gap: 4,
-                  alignItems: 'end',
-                }}
-              >
-                {Array.from({ length: 10 }, (_, segment) => (
-                  <span
-                    key={segment}
-                    style={{
-                      height: `${28 + ((camera.slot * 7 + segment * 13) % 58)}%`,
-                      borderRadius: '3px 3px 0 0',
-                      background: 'linear-gradient(180deg, rgba(255, 69, 58, 0.78), rgba(255, 214, 10, 0.58), rgba(48, 209, 88, 0.28))',
-                      opacity: 0.58 + ((segment + camera.slot) % 3) * 0.12,
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          ) : (
-            <div
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: 8,
-                color: isEnabled ? 'var(--text-muted)' : 'rgba(255, 255, 255, 0.18)',
-                background: isEnabled
-                  ? 'radial-gradient(circle at center, rgba(255, 255, 255, 0.045), transparent 58%)'
-                  : 'repeating-linear-gradient(135deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 10px)',
-              }}
-            >
-              <Activity size={28} strokeWidth={1.2} />
-              <span style={{ fontSize: 12 }}>{isEnabled ? '等待接入' : '监控已停用'}</span>
-            </div>
-          )}
+          <ZlMediaKitWebRtcPlayer
+            active={isLive}
+            streamUrl={camera.webrtc}
+            streamName={`热成像 ${camera.displayName}`}
+          />
 
           <div
             style={{
@@ -418,7 +362,7 @@ function renderThermalCameraCard(
             }}
           >
             <Clock size={11} />
-            DELAY {camera.delayed || 0}s
+            延时 {camera.delayed || 0} 秒
           </div>
         </div>
 
@@ -450,9 +394,8 @@ function renderThermalCameraCard(
             </span>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 2 }}>流地址</div>
+            <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 2 }}>流状态</div>
             <span
-              title={primaryStream}
               style={{
                 display: 'block',
                 fontSize: 10,
@@ -463,7 +406,7 @@ function renderThermalCameraCard(
                 textOverflow: 'ellipsis',
               }}
             >
-              {primaryStream}
+              {streamStateText}
             </span>
           </div>
         </div>
@@ -521,7 +464,7 @@ export default function MonitorCenter() {
           setThermalCameraStatus('error');
         }
 
-        setThermalCameraMessage(error instanceof Error ? error.message : '接口请求失败');
+        setThermalCameraMessage(canUseMockData ? '数据加载异常，已展示备用数据' : '加载失败，请稍后重试');
       }
     }
 
@@ -543,12 +486,12 @@ export default function MonitorCenter() {
   const thermalStatusText = thermalCameraStatus === 'loading'
     ? '查询中'
     : thermalCameraStatus === 'success'
-      ? '接口数据'
+      ? '已加载'
       : thermalCameraStatus === 'fallback'
-        ? '接口失败 · 样例'
+        ? '备用数据'
         : thermalCameraStatus === 'error'
-          ? '接口失败'
-          : apiMockModeLabel[apiMockMode];
+          ? '加载失败'
+          : '演示数据';
 
   return (
     <>
@@ -690,7 +633,7 @@ export default function MonitorCenter() {
                   textOverflow: 'ellipsis',
                 }}
               >
-                GET /device/live · {thermalStatusText}
+                {onlineCount + standbyCount + pausedCount} 路画面 · {thermalStatusText}
               </div>
               {thermalCameraMessage && (
                 <div
@@ -705,7 +648,7 @@ export default function MonitorCenter() {
                   }}
                   title={thermalCameraMessage}
                 >
-                  {thermalCameraStatus === 'fallback' ? `接口未连通，当前展示文档样例数据：${thermalCameraMessage}` : thermalCameraMessage}
+                  {thermalCameraMessage}
                 </div>
               )}
             </div>

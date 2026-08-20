@@ -3,6 +3,10 @@ import type { DeviceType } from '@/types/template';
 /**
  * 构建目标会被 NEXT_PUBLIC_PRODUCT_MODE 内联到浏览器产物中。
  * 未设置时保留完整的集成平台；设置后只呈现指定业务模块。
+ *
+ * - npm run dev                     → 集成平台（铁水沟 + 钢包识别）
+ * - npm run dev:trough              → 仅铁水沟
+ * - npm run dev:ladle-recognition   → 仅钢包识别
  */
 export type ProductMode = 'trough' | 'ladle-recognition';
 
@@ -17,6 +21,12 @@ const productConfigs: Record<ProductMode, ProductConfig> = {
   'ladle-recognition': { deviceType: 'ladle-recognition', title: '钢包识别' },
 };
 
+/** 集成平台默认展示的业务模块入口。 */
+export const integratedOverviewDeviceTypes: DeviceType[] = [
+  'hot-metal-trough-sim',
+  'ladle-recognition',
+];
+
 function isProductMode(value: string | undefined): value is ProductMode {
   return value === 'trough' || value === 'ladle-recognition';
 }
@@ -26,3 +36,8 @@ export const productMode = isProductMode(process.env.NEXT_PUBLIC_PRODUCT_MODE)
   : null;
 
 export const productConfig = productMode ? productConfigs[productMode] : null;
+
+/** 总览页可见设备类型：单产品模式只开对应模块，否则展示全部集成入口。 */
+export const overviewDeviceTypes: DeviceType[] = productConfig
+  ? [productConfig.deviceType]
+  : integratedOverviewDeviceTypes;

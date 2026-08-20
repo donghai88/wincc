@@ -54,16 +54,6 @@
 }
 
 .topBar {
-  position: relative;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--sim-border);
-  background: rgba(3, 6, 10, 0.72);
-  backdrop-filter: blur(18px);
 }
 
 .backButton {
@@ -169,7 +159,6 @@
   flex-direction: column;
   gap: 12px;
   overflow: auto;
-  padding: 14px 16px 18px;
 }
 
 .sectionLabel {
@@ -861,10 +850,6 @@
 }
 
 @media (max-width: 760px) {
-  .topBar {
-    grid-template-columns: 1fr;
-  }
-
   .devicePanel,
   .cameraRow,
   .tempRow,

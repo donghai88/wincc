@@ -165,6 +165,12 @@ export interface AlarmPageData {
   list: AlarmPageRecord[];
 }
 
+export interface AlarmBatchProcessRequest {
+  eventIds: string[];
+  processor: string;
+  processContent: string;
+}
+
 export interface AlarmLocationStat {
   locationName: string;
   alarmCount: number;

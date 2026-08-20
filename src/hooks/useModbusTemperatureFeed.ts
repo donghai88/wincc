@@ -20,9 +20,10 @@ const MOCK_SOCKET_BREAK_DELAY_MS = 20000;
 const MOCK_RETRY_DELAY_MS = 3000;
 const MOCK_RECONNECT_DELAY_MS = 3000;
 const WS_RETRY_DELAY_MS = 3000;
-const MOCK_SOCKET_BREAK_MESSAGE = '模拟：WS /ws/modbus 连接中断';
-const MOCK_SOCKET_RETRY_MESSAGE = '模拟：WS /ws/modbus 正在重连';
-const WS_RETRY_MESSAGE = 'WS /ws/modbus 正在重连';
+const WS_HEARTBEAT_INTERVAL_MS = 30000;
+const MOCK_SOCKET_BREAK_MESSAGE = '数据连接中断';
+const MOCK_SOCKET_RETRY_MESSAGE = '正在重连';
+const WS_RETRY_MESSAGE = '正在重连';
 const MOCK_LOCATION = {
   locationId: 'loc_1',
   locationName: '位置1',
@@ -40,7 +41,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 const readString = (record: Record<string, unknown>, key: string) => {
   const value = record[key];
-  return typeof value === 'string' ? value.trim() : '';
+  if (typeof value === 'string') return value.trim();
+  // Some backends serialize numeric fields as JSON numbers; coerce so pushes are not dropped.
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return '';
 };
 
 const formatReceivedAt = () => {
@@ -107,11 +112,22 @@ const createMockPoint = (tick: number, source: ModbusFeedSource) => {
   return normalizeMessage(createMockMessage(tick), source);
 };
 
+const mergeTemperaturePoints = (
+  currentPoints: DigitalTwinTemperaturePoint[],
+  incomingPoints: DigitalTwinTemperaturePoint[]
+) => {
+  const pointsByLocation = new Map(currentPoints.map((point) => [point.locationId, point]));
+  incomingPoints.forEach((point) => pointsByLocation.set(point.locationId, point));
+  return [...pointsByLocation.values()];
+};
+
 const createInitialFeed = (): ModbusTemperatureFeed => {
   if (isMockOnly) {
+    const point = createMockPoint(0, 'mock');
     return {
       status: 'mock',
-      point: createMockPoint(0, 'mock'),
+      point,
+      points: [point],
       message: '',
     };
   }
@@ -119,6 +135,7 @@ const createInitialFeed = (): ModbusTemperatureFeed => {
   return {
     status: 'connecting',
     point: null,
+    points: [],
     message: '',
   };
 };
@@ -134,6 +151,7 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
     let mockRetryTimer: number | undefined;
     let mockReconnectTimer: number | undefined;
     let wsRetryTimer: number | undefined;
+    let heartbeatTimer: number | undefined;
     let socket: WebSocket | undefined;
 
     const clearMockTimer = () => {
@@ -168,14 +186,36 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
       }
     };
 
+    const clearHeartbeatTimer = () => {
+      if (heartbeatTimer !== undefined) {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = undefined;
+      }
+    };
+
+    const startHeartbeatTimer = () => {
+      clearHeartbeatTimer();
+      const sendHeartbeat = () => {
+        if (socket?.readyState === WebSocket.OPEN) {
+          // The backend only requires any client message to keep the session alive.
+          socket.send('ping');
+        }
+      };
+      // Send immediately on connect so the 90s idle timeout does not race the first interval.
+      sendHeartbeat();
+      heartbeatTimer = window.setInterval(sendHeartbeat, WS_HEARTBEAT_INTERVAL_MS);
+    };
+
     const pushMockPoint = (status: Extract<ModbusFeedStatus, 'mock' | 'fallback'>, message: string) => {
       if (disposed) return;
       const source = status === 'fallback' ? 'fallback' : 'mock';
-      setFeed({
+      const point = createMockPoint(mockTick, source);
+      setFeed((current) => ({
         status,
-        point: createMockPoint(mockTick, source),
+        point,
+        points: mergeTemperaturePoints(current.points, [point]),
         message,
-      });
+      }));
       mockTick += 1;
     };
 
@@ -215,6 +255,7 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
     };
 
     const stopSocket = () => {
+      clearHeartbeatTimer();
       if (socket && socket.readyState <= WebSocket.OPEN) {
         socket.close();
       }
@@ -230,6 +271,7 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
         clearMockBreakTimer();
         clearMockRetryTimers();
         clearWsRetryTimer();
+        clearHeartbeatTimer();
         stopSocket();
       };
     }
@@ -242,6 +284,7 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
         socket.addEventListener('open', () => {
           if (disposed) return;
           clearWsRetryTimer();
+          startHeartbeatTimer();
           setFeed((current) => ({
             ...current,
             status: 'connected',
@@ -250,30 +293,47 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
         });
 
         socket.addEventListener('message', (event) => {
-          const messages = parseSocketPayload(event.data);
-          const firstMessage = messages[0];
-          if (!firstMessage || disposed) return;
+          if (disposed) return;
 
-          setFeed({
+          const raw = typeof event.data === 'string'
+            ? event.data
+            : '';
+          // Ignore heartbeat echoes / non-JSON keepalives.
+          if (!raw || raw === 'ping' || raw === 'pong') return;
+
+          const messages = parseSocketPayload(raw);
+          if (messages.length === 0) {
+            setFeed((current) => ({
+              ...current,
+              status: 'connected',
+              message: current.point ? current.message : '已连接，收到数据但格式无法识别',
+            }));
+            return;
+          }
+
+          const points = messages.map((message) => normalizeMessage(message, 'ws'));
+
+          setFeed((current) => ({
             status: 'connected',
-            point: normalizeMessage(firstMessage, 'ws'),
+            point: points[0],
+            points: mergeTemperaturePoints(current.points, points),
             message: '',
-          });
+          }));
         });
 
         socket.addEventListener('error', () => {
           if (disposed || mockTimer !== undefined || wsRetryTimer !== undefined) return;
-          handleWsDisconnect('WS /ws/modbus 连接失败');
+          handleWsDisconnect('数据连接失败');
         });
 
         socket.addEventListener('close', () => {
           if (disposed || mockTimer !== undefined || wsRetryTimer !== undefined) return;
-          handleWsDisconnect('WS /ws/modbus 已断开');
+          handleWsDisconnect('数据连接已断开');
         });
-      } catch (error) {
+      } catch {
         window.setTimeout(() => {
           if (disposed || wsRetryTimer !== undefined) return;
-          handleWsDisconnect(error instanceof Error ? error.message : 'WS /ws/modbus 初始化失败');
+          handleWsDisconnect('数据连接初始化失败');
         }, 0);
       }
     };
@@ -299,11 +359,12 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
     };
 
     const handleWsDisconnect = (message: string) => {
-      setFeed((current) => ({
-        ...current,
+      setFeed({
         status: 'error',
+        point: null,
+        points: [],
         message,
-      }));
+      });
 
       wsRetryTimer = window.setTimeout(() => {
         wsRetryTimer = undefined;
@@ -321,6 +382,7 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
       clearMockBreakTimer();
       clearMockRetryTimers();
       clearWsRetryTimer();
+      clearHeartbeatTimer();
       stopSocket();
     };
   }, []);

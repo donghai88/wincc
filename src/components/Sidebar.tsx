@@ -6,7 +6,6 @@ import {
   FileBarChart,
   FileSearch,
   Bell,
-  HelpCircle,
   PanelLeftClose,
   PanelLeft,
   Flame,
@@ -24,24 +23,30 @@ const navItems: NavItem[] = [
   { id: 'dashboard', name: '监控总览', icon: LayoutDashboard },
   { id: 'devices', name: '监控中心', icon: Monitor },
   { id: 'reports', name: '报表分析', icon: FileBarChart },
-  { id: 'alarms', name: '告警中心', icon: Bell, badge: 3 },
+  { id: 'alarms', name: '告警中心', icon: Bell },
   { id: 'settings', name: '查询周报', icon: FileSearch },
-  { id: 'help', name: '帮助文档', icon: HelpCircle },
 ];
 
 interface SidebarProps {
   activeNav: string;
   onNavChange: (navId: string) => void;
+  unreadAlarmCount?: number | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-export default function Sidebar({ activeNav, onNavChange, collapsed = false, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({
+  activeNav,
+  onNavChange,
+  unreadAlarmCount = null,
+  collapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
   return (
     <aside
       style={{
         width: collapsed ? 64 : 220,
-        height: '100vh',
+        height: '100%',
         background: 'var(--surface)',
         borderRight: '1px solid var(--border)',
         display: 'flex',
@@ -154,6 +159,7 @@ export default function Sidebar({ activeNav, onNavChange, collapsed = false, onT
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeNav === item.id;
+          const badge = item.id === 'alarms' ? unreadAlarmCount ?? 0 : item.badge ?? 0;
 
           return (
             <button
@@ -226,7 +232,7 @@ export default function Sidebar({ activeNav, onNavChange, collapsed = false, onT
                     {item.name}
                   </span>
 
-                  {item.badge && (
+                  {badge > 0 && (
                     <span
                       style={{
                         fontSize: 10,
@@ -237,13 +243,13 @@ export default function Sidebar({ activeNav, onNavChange, collapsed = false, onT
                         fontWeight: 500,
                       }}
                     >
-                      {item.badge}
+                      {badge}
                     </span>
                   )}
                 </>
               )}
 
-              {collapsed && item.badge && (
+              {collapsed && badge > 0 && (
                 <div
                   style={{
                     position: 'absolute',

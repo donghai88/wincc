@@ -1,4 +1,5 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../**/*.{js,ts,jsx,tsx,mdx}";
 
 :root {
   /* Pure, Minimal Color System - Jobs Philosophy */
@@ -40,6 +41,15 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+
+  /* Monitoring workspace frame: matches the accepted trough workbench */
+  --monitor-toolbar-x: 20px;
+  --monitor-toolbar-top: 16px;
+  --monitor-toolbar-bottom: 14px;
+  --monitor-workspace-x: 16px;
+  --monitor-workspace-top: 14px;
+  --monitor-workspace-bottom: 16px;
+  --monitor-gutter-mobile: 12px;
 
   /* Radius */
   --radius-sm: 6px;
