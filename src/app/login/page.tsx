@@ -15,8 +15,8 @@ const mockUsers = [
 function LoginContent() {
   const { login } = useAuth();
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -360,34 +360,6 @@ function LoginContent() {
           >
             {isLoading ? '登录中...' : '登 录'}
           </button>
-
-          {/* Demo Accounts */}
-          <div
-            style={{
-              marginTop: 24,
-              padding: '16px',
-              background: 'var(--surface-raised)',
-              borderRadius: 8,
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: 'var(--text-muted)',
-                marginBottom: 10,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}
-            >
-              演示账号
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              <div>管理员: admin / admin123</div>
-              <div>操作员: operator / op123</div>
-              <div>观察员: viewer / view123</div>
-            </div>
-          </div>
         </form>
       </div>
     </div>

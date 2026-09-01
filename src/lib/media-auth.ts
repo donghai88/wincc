@@ -1,0 +1,92 @@
+import { buildApiUrl } from '@/lib/api-config';
+
+type TokenResponse = {
+  code?: number;
+  msg?: unknown;
+  data?: unknown;
+  access_token?: unknown;
+  token?: unknown;
+};
+
+let cachedToken: string | null = null;
+let inflight: Promise<string> | null = null;
+
+const readTokenCandidate = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+};
+
+const extractAccessToken = (payload: unknown): string => {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error('媒体鉴权接口返回结构异常');
+  }
+
+  const record = payload as TokenResponse;
+  if (typeof record.code === 'number' && record.code !== 200 && record.code !== 0) {
+    const detail = readTokenCandidate(record.msg) || `code ${record.code}`;
+    throw new Error(`媒体鉴权失败（${detail}）`);
+  }
+
+  const nested = typeof record.data === 'object' && record.data !== null
+    ? record.data as Record<string, unknown>
+    : null;
+
+  const token = readTokenCandidate(record.msg)
+    || readTokenCandidate(record.access_token)
+    || readTokenCandidate(record.token)
+    || readTokenCandidate(nested?.access_token)
+    || readTokenCandidate(nested?.token)
+    || readTokenCandidate(nested?.msg);
+
+  if (!token) {
+    throw new Error('媒体鉴权接口未返回 access_token');
+  }
+
+  return token;
+};
+
+const fetchAccessToken = async () => {
+  const response = await fetch(buildApiUrl('/device/getToken'), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`媒体鉴权接口失败（HTTP ${response.status}）`);
+  }
+
+  const payload = await response.json() as unknown;
+  return extractAccessToken(payload);
+};
+
+/** Shared media access_token for ZLMediaKit play signaling (Authorization: Bearer …). */
+export const getMediaAccessToken = async (options?: {
+  forceRefresh?: boolean;
+}) => {
+  if (!options?.forceRefresh && cachedToken) {
+    return cachedToken;
+  }
+
+  if (!options?.forceRefresh && inflight) {
+    return inflight;
+  }
+
+  const request = fetchAccessToken()
+    .then((token) => {
+      cachedToken = token;
+      return token;
+    })
+    .finally(() => {
+      if (inflight === request) inflight = null;
+    });
+
+  inflight = request;
+  return request;
+};
+
+export const invalidateMediaAccessToken = () => {
+  cachedToken = null;
+};
+
+export const buildMediaAuthorizationHeader = (token: string) => `Bearer ${token}`;

@@ -3,6 +3,11 @@
 import { AlertTriangle, LoaderCircle, Play, RotateCw, VideoOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { isMockOnly } from '@/lib/api-config';
+import {
+  buildMediaAuthorizationHeader,
+  getMediaAccessToken,
+  invalidateMediaAccessToken,
+} from '@/lib/media-auth';
 
 type PlayerStatus = 'connecting' | 'playing' | 'error' | 'unavailable' | 'mock';
 
@@ -10,6 +15,13 @@ interface ZlMediaKitWebRtcPlayerProps {
   active: boolean;
   streamUrl: string;
   streamName: string;
+}
+
+class MediaAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MediaAuthError';
+  }
 }
 
 const waitForIceGatheringComplete = (peerConnection: RTCPeerConnection) => {
@@ -43,7 +55,7 @@ const localizeMediaError = (rawMessage: string, code?: number) => {
   const lower = message.toLowerCase();
 
   if (lower.includes('auth failed') || code === 1) {
-    return '媒体鉴权失败，请确认播流地址已带授权信息';
+    return '媒体鉴权失败，请确认已携带 Authorization Bearer token';
   }
   if (lower.includes('not found') || lower.includes('no such stream') || (code === -400 && lower.includes('stream'))) {
     return '媒体流不存在或未推流';
@@ -51,6 +63,11 @@ const localizeMediaError = (rawMessage: string, code?: number) => {
   if (message) return message;
   if (code !== undefined) return `媒体服务返回错误（${code}）`;
   return '实时流连接失败';
+};
+
+const isMediaAuthFailure = (rawMessage: string, code?: number) => {
+  const lower = decodePossiblyEscapedText(rawMessage).trim().toLowerCase();
+  return lower.includes('auth failed') || code === 1;
 };
 
 const getAnswerSdp = (body: string) => {
@@ -63,7 +80,11 @@ const getAnswerSdp = (body: string) => {
     const sdp = payload.sdp ?? payload.data?.sdp;
 
     if (payload.code !== undefined && payload.code !== 0) {
-      throw new Error(localizeMediaError(payload.msg || '', payload.code));
+      const message = localizeMediaError(payload.msg || '', payload.code);
+      if (isMediaAuthFailure(payload.msg || '', payload.code)) {
+        throw new MediaAuthError(message);
+      }
+      throw new Error(message);
     }
     if (sdp) return sdp;
   } catch (error) {
@@ -74,6 +95,29 @@ const getAnswerSdp = (body: string) => {
   }
 
   throw new Error('媒体应答中缺少视频描述');
+};
+
+const postPlayOffer = async (streamUrl: string, sdp: string, token: string, signal?: AbortSignal) => {
+  const response = await fetch(streamUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/sdp, text/plain, application/json',
+      Authorization: buildMediaAuthorizationHeader(token),
+      'Content-Type': 'text/plain;charset=UTF-8',
+    },
+    body: sdp,
+    signal,
+  });
+
+  const responseBody = await response.text();
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new MediaAuthError(`视频信令鉴权失败（${response.status}）`);
+    }
+    throw new Error(`视频信令失败（${response.status}）`);
+  }
+
+  return getAnswerSdp(responseBody);
 };
 
 export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }: ZlMediaKitWebRtcPlayerProps) {
@@ -91,11 +135,13 @@ export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }
     }
 
     let disposed = false;
+    const controller = new AbortController();
     const peerConnection = new RTCPeerConnection();
     const video = videoRef.current;
 
     const fail = (error: unknown) => {
-      if (disposed) return;
+      if (disposed || controller.signal.aborted) return;
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       let detail = '实时流连接失败';
       if (error instanceof TypeError) {
         detail = '无法连接媒体服务（地址不可达、证书或跨域）';
@@ -137,21 +183,27 @@ export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }
         await peerConnection.setLocalDescription(offer);
         await waitForIceGatheringComplete(peerConnection);
 
-        const response = await fetch(streamUrl, {
-          method: 'POST',
-          headers: {
-            Accept: 'application/sdp, text/plain, application/json',
-            'Content-Type': 'text/plain;charset=UTF-8',
-          },
-          body: peerConnection.localDescription?.sdp,
-        });
-
-        const responseBody = await response.text();
-        if (!response.ok) {
-          throw new Error(`视频信令失败（${response.status}）`);
+        const localSdp = peerConnection.localDescription?.sdp;
+        if (!localSdp) {
+          throw new Error('未能生成视频描述');
         }
 
-        await peerConnection.setRemoteDescription({ type: 'answer', sdp: getAnswerSdp(responseBody) });
+        let token = await getMediaAccessToken();
+        if (disposed) return;
+
+        let answerSdp: string;
+        try {
+          answerSdp = await postPlayOffer(streamUrl, localSdp, token, controller.signal);
+        } catch (error) {
+          if (!(error instanceof MediaAuthError) || disposed) throw error;
+          invalidateMediaAccessToken();
+          token = await getMediaAccessToken({ forceRefresh: true });
+          if (disposed) return;
+          answerSdp = await postPlayOffer(streamUrl, localSdp, token, controller.signal);
+        }
+
+        if (disposed) return;
+        await peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
       } catch (error) {
         fail(error);
       }
@@ -170,6 +222,7 @@ export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }
 
     return () => {
       disposed = true;
+      controller.abort();
       peerConnection.close();
       if (video) video.srcObject = null;
     };
