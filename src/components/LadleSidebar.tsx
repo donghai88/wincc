@@ -1,54 +1,31 @@
 'use client';
 
 import {
-  LayoutDashboard,
-  Monitor,
-  FileBarChart,
-  FileSearch,
-  Bell,
-  BookOpen,
-  PanelLeftClose,
+  Activity,
+  ArrowLeft,
   PanelLeft,
-  Flame,
-  type LucideIcon,
+  PanelLeftClose,
+  ScanText,
 } from 'lucide-react';
-import { isTroughProductMode } from '@/lib/product-mode';
+import { ladleNavItems, type LadleNavId } from '@/lib/ladle-navigation';
 
-interface NavItem {
-  id: string;
-  name: string;
-  icon: LucideIcon;
-  badge?: number;
-}
-
-const navItems: NavItem[] = [
-  { id: 'dashboard', name: '监控总览', icon: LayoutDashboard },
-  { id: 'devices', name: '监控中心', icon: Monitor },
-  { id: 'reports', name: '报表分析', icon: FileBarChart },
-  { id: 'alarms', name: '告警中心', icon: Bell },
-  { id: 'settings', name: '查询周报', icon: FileSearch },
-  { id: 'manual', name: '用户使用手册', icon: BookOpen },
-];
-
-const visibleNavItems = isTroughProductMode
-  ? navItems.filter((item) => item.id !== 'manual')
-  : navItems;
-
-interface SidebarProps {
-  activeNav: string;
-  onNavChange: (navId: string) => void;
+interface LadleSidebarProps {
+  activeNav: LadleNavId;
+  onNavChange: (navId: LadleNavId) => void;
+  onBackToModeSelector?: () => void;
   unreadAlarmCount?: number | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-export default function Sidebar({
+export default function LadleSidebar({
   activeNav,
   onNavChange,
+  onBackToModeSelector,
   unreadAlarmCount = null,
   collapsed = false,
   onToggleCollapse,
-}: SidebarProps) {
+}: LadleSidebarProps) {
   return (
     <aside
       style={{
@@ -63,7 +40,6 @@ export default function Sidebar({
         overflow: 'hidden',
       }}
     >
-      {/* Logo */}
       <div
         style={{
           padding: collapsed ? '24px 16px' : '24px 20px',
@@ -79,22 +55,22 @@ export default function Sidebar({
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+              background: 'linear-gradient(135deg, #0a84ff, #22d3ee)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            <Flame size={16} color="#fff" />
+            <ScanText size={16} color="#fff" />
           </div>
           {!collapsed && (
             <div>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                监控集成平台
+                钢包智能监测
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                钢铁冶金监控系统
+                红外测温 · OCR · 雷达
               </div>
             </div>
           )}
@@ -113,15 +89,6 @@ export default function Sidebar({
               borderRadius: 6,
               cursor: 'pointer',
               color: 'var(--text-muted)',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--surface-hover)';
-              e.currentTarget.style.color = 'var(--text-secondary)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--text-muted)';
             }}
             title="收起侧边栏"
           >
@@ -130,7 +97,6 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Expand button when collapsed */}
       {collapsed && onToggleCollapse && (
         <button
           onClick={onToggleCollapse}
@@ -145,15 +111,6 @@ export default function Sidebar({
             borderBottom: '1px solid var(--border-subtle)',
             cursor: 'pointer',
             color: 'var(--text-muted)',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--surface-hover)';
-            e.currentTarget.style.color = 'var(--text-secondary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--text-muted)';
           }}
           title="展开侧边栏"
         >
@@ -161,12 +118,37 @@ export default function Sidebar({
         </button>
       )}
 
-      {/* Navigation */}
       <nav style={{ flex: 1, overflow: 'auto', padding: '12px 8px' }}>
-        {visibleNavItems.map((item) => {
+        {onBackToModeSelector && (
+          <button
+            type="button"
+            onClick={onBackToModeSelector}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: collapsed ? '12px 0' : '10px 12px',
+              marginBottom: 10,
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              color: 'var(--text-secondary)',
+            }}
+            title="返回功能选择"
+          >
+            <ArrowLeft size={18} style={{ flexShrink: 0 }} />
+            {!collapsed && (
+              <span style={{ fontSize: 13, textAlign: 'left' }}>返回功能选择</span>
+            )}
+          </button>
+        )}
+        {ladleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeNav === item.id;
-          const badge = item.id === 'alarms' ? unreadAlarmCount ?? 0 : item.badge ?? 0;
+          const badge = item.id === 'ladle-alarms' ? unreadAlarmCount ?? 0 : 0;
 
           return (
             <button
@@ -184,22 +166,10 @@ export default function Sidebar({
                 borderRadius: 8,
                 cursor: 'pointer',
                 position: 'relative',
-                transition: 'background var(--transition-fast)',
                 justifyContent: collapsed ? 'center' : 'flex-start',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--surface-hover)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'transparent';
-                }
               }}
               title={collapsed ? item.name : undefined}
             >
-              {/* Active Indicator */}
               {isActive && (
                 <div
                   style={{
@@ -211,7 +181,7 @@ export default function Sidebar({
                     marginTop: collapsed ? 0 : -10,
                     width: collapsed ? 20 : 3,
                     height: collapsed ? 3 : 20,
-                    background: 'var(--accent)',
+                    background: '#0a84ff',
                     borderRadius: collapsed ? '2px 2px 0 0' : '0 2px 2px 0',
                   }}
                 />
@@ -220,7 +190,7 @@ export default function Sidebar({
               <Icon
                 size={18}
                 style={{
-                  color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                  color: isActive ? '#0a84ff' : 'var(--text-muted)',
                   flexShrink: 0,
                 }}
               />
@@ -238,7 +208,6 @@ export default function Sidebar({
                   >
                     {item.name}
                   </span>
-
                   {badge > 0 && (
                     <span
                       style={{
@@ -255,26 +224,11 @@ export default function Sidebar({
                   )}
                 </>
               )}
-
-              {collapsed && badge > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 8,
-                    right: collapsed ? 12 : 'auto',
-                    width: 8,
-                    height: 8,
-                    background: 'var(--status-error)',
-                    borderRadius: '50%',
-                  }}
-                />
-              )}
             </button>
           );
         })}
       </nav>
 
-      {/* Footer */}
       <div
         style={{
           padding: collapsed ? '16px 0' : '16px 20px',
@@ -282,13 +236,9 @@ export default function Sidebar({
           textAlign: collapsed ? 'center' : 'left',
         }}
       >
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--text-muted)',
-          }}
-        >
-          {collapsed ? 'v1.0' : 'v1.0.0 · 钢包监控'}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, justifyContent: collapsed ? 'center' : 'flex-start' }}>
+          <Activity size={12} />
+          {collapsed ? 'v2' : 'RH-LadleMonitor V2.0'}
         </div>
       </div>
     </aside>

@@ -43,6 +43,20 @@ Windows CMD：
 set E2E_BASE_URL=http://测试服务器IP:3001 && npm run test:e2e:api
 ```
 
+## 钢包监测冒烟测试
+
+默认按 **Mock UI** 验收钢包 5 个模块主流程（实时监控、数据查询含导出、曲线分析、报警管理、钢包管理 CRUD）。产物保存到 `output/e2e-ladle-smoke/`。
+
+```bash
+# 终端 1：启动钢包产品模式（默认 mock）
+npm run dev:ladle-recognition
+
+# 终端 2：跑冒烟
+npx playwright install chromium
+E2E_BASE_URL=http://127.0.0.1:3001 npm run test:e2e:ladle
+```
+
+若已对接真实后端，可附加 `E2E_EXPECT_API=true`，脚本会额外等待 `/ladle-record/list`、`/ladle-chart/list`、`/alarm/page`、`/ladle/list` 等接口响应。
 ## Getting Started
 
 First, run the development server:

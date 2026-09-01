@@ -193,6 +193,12 @@ export interface DeviceMonitorPanelProps {
   selectedDeviceType: DeviceType;
   onSelectWinCC: (w: WinCCInstance) => void;
   onBack: () => void;
+  /** 选择「热成像监控」后进入钢包业务壳层（数据查询/曲线/报警/管理）。 */
+  onEnterLadleWorkspace?: () => void;
+  /** 钢包功能选择层模式：由 URL 驱动。 */
+  ladlePanelMode?: 'selector' | 'radar';
+  onSelectLadleRadar?: () => void;
+  onBackFromLadleRadar?: () => void;
 }
 
 export default function DeviceMonitorPanel({
@@ -200,15 +206,23 @@ export default function DeviceMonitorPanel({
   selectedDeviceType,
   onSelectWinCC,
   onBack,
+  onEnterLadleWorkspace,
+  ladlePanelMode = 'selector',
+  onSelectLadleRadar,
+  onBackFromLadleRadar,
 }: DeviceMonitorPanelProps) {
   const [historyHoursAgo, setHistoryHoursAgo] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [ladleMonitorMode, setLadleMonitorMode] = useState<'selector' | 'thermal' | 'radar'>('selector');
+  const [ladleMonitorMode, setLadleMonitorMode] = useState<'selector' | 'thermal' | 'radar'>(ladlePanelMode);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setLadleMonitorMode(ladlePanelMode);
+  }, [ladlePanelMode]);
 
   const isLadleType = selectedWinCC.deviceType === 'ladle';
   const trendData = useMemo(() => {
@@ -261,14 +275,30 @@ export default function DeviceMonitorPanel({
         <LadleMonitoringModeSelector
           wincc={selectedWinCC}
           onBack={onBack}
-          onSelectThermal={() => setLadleMonitorMode('thermal')}
-          onSelectRadar={() => setLadleMonitorMode('radar')}
+          onSelectThermal={() => {
+            if (onEnterLadleWorkspace) {
+              onEnterLadleWorkspace();
+              return;
+            }
+            setLadleMonitorMode('thermal');
+          }}
         />
       );
     }
 
     if (ladleMonitorMode === 'radar') {
-      return <SlagLineMonitor wincc={selectedWinCC} onBack={() => setLadleMonitorMode('selector')} />;
+      return (
+        <SlagLineMonitor
+          wincc={selectedWinCC}
+          onBack={() => {
+            if (onBackFromLadleRadar) {
+              onBackFromLadleRadar();
+              return;
+            }
+            setLadleMonitorMode('selector');
+          }}
+        />
+      );
     }
 
     return (

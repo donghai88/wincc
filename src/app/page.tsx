@@ -1,25 +1,68 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { WinCCInstance, DeviceType } from '@/types/template';
 import { getDeviceTypeConfig, groupWinCCByDeviceType } from '@/data/wincc-config';
 import Sidebar from '@/components/Sidebar';
+import LadleSidebar from '@/components/LadleSidebar';
 import SystemOverview from '@/components/SystemOverview';
 import DeviceTypeOverview from '@/components/DeviceTypeOverview';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUnreadAlarmCount } from '@/hooks/useUnreadAlarmCount';
-import { overviewDeviceTypes } from '@/lib/product-mode';
+import { useLadleUnreadAlarmCount } from '@/hooks/useLadleUnreadAlarmCount';
+import {
+  defaultLadleNav,
+  isLadleNavId,
+  ladleNavTitles,
+  type LadleNavId,
+} from '@/lib/ladle-navigation';
+import {
+  createDefaultAppRoute,
+  pushAppRoute,
+  readAppRouteFromLocation,
+  replaceAppRoute,
+  type AppRouteState,
+  type LadlePanelMode,
+} from '@/lib/app-navigation';
+import { isTroughProductMode, overviewDeviceTypes } from '@/lib/product-mode';
 import { LogOut, User } from 'lucide-react';
 
-// 次屏/重型模块延后加载；总览组件保持同步导入，避免首屏再等一轮动态编译。
 const AlarmCenter = dynamic(() => import('@/components/AlarmCenter'), { ssr: false });
 const TemperatureTrendReport = dynamic(() => import('@/components/TemperatureTrendReport'), { ssr: false });
 const LadleCurveAnalysis = dynamic(() => import('@/components/LadleCurveAnalysis'), { ssr: false });
 const LadleManagement = dynamic(() => import('@/components/LadleManagement'), { ssr: false });
+const LadleDataQuery = dynamic(() => import('@/components/LadleDataQuery'), { ssr: false });
+const LadleAlarmCenter = dynamic(() => import('@/components/LadleAlarmCenter'), { ssr: false });
+const LadleUserManual = dynamic(() => import('@/components/LadleUserManual'), { ssr: false });
+const UserManual = dynamic(() => import('@/components/UserManual'), { ssr: false });
 const WeeklyReportQuery = dynamic(() => import('@/components/WeeklyReportQuery'), { ssr: false });
 const DeviceMonitorPanel = dynamic(() => import('@/components/DeviceMonitorPanel'), { ssr: false });
 const MonitorCenter = dynamic(() => import('@/components/MonitorCenter'), { ssr: false });
+const LadleRecognitionMonitor = dynamic(() => import('@/components/LadleRecognitionMonitor'), { ssr: false });
+
+function resolveWinCC(deviceType: DeviceType | null): WinCCInstance | null {
+  if (!deviceType) return null;
+  const grouped = groupWinCCByDeviceType();
+  return grouped[deviceType]?.[0] ?? null;
+}
+
+function applyRouteToState(
+  route: AppRouteState,
+  setters: {
+    setSelectedDeviceType: (value: DeviceType | null) => void;
+    setSelectedWinCC: (value: WinCCInstance | null) => void;
+    setLadleShellActive: (value: boolean) => void;
+    setLadlePanelMode: (value: LadlePanelMode) => void;
+    setActiveNav: (value: string) => void;
+  },
+) {
+  setters.setSelectedDeviceType(route.deviceType);
+  setters.setSelectedWinCC(resolveWinCC(route.deviceType));
+  setters.setLadleShellActive(route.ladleShellActive);
+  setters.setLadlePanelMode(route.ladlePanelMode);
+  setters.setActiveNav(route.nav);
+}
 
 export default function Home() {
   const { user, isLoading, logout } = useAuth();
@@ -28,8 +71,28 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [ladleShellActive, setLadleShellActive] = useState(false);
+  const [ladlePanelMode, setLadlePanelMode] = useState<LadlePanelMode>('selector');
   const [activeNav, setActiveNav] = useState('dashboard');
-  const unreadAlarmCount = useUnreadAlarmCount();
+  const [routeReady, setRouteReady] = useState(false);
+  const troughUnreadAlarmCount = useUnreadAlarmCount();
+  const ladleUnreadAlarmCount = useLadleUnreadAlarmCount(ladleShellActive);
+
+  const syncFromRoute = useCallback((route: AppRouteState) => {
+    applyRouteToState(route, {
+      setSelectedDeviceType,
+      setSelectedWinCC,
+      setLadleShellActive,
+      setLadlePanelMode,
+      setActiveNav,
+    });
+  }, []);
+
+  const navigateTo = useCallback((route: AppRouteState, mode: 'push' | 'replace' = 'push') => {
+    syncFromRoute(route);
+    if (mode === 'replace') replaceAppRoute(route);
+    else pushAppRoute(route);
+  }, [syncFromRoute]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -45,7 +108,21 @@ export default function Home() {
     return () => mediaQuery.removeEventListener('change', updateViewportState);
   }, []);
 
-  if (isLoading || !user) {
+  useEffect(() => {
+    const initial = readAppRouteFromLocation();
+    syncFromRoute(initial);
+    replaceAppRoute(initial);
+    setRouteReady(true);
+
+    const onPopState = () => {
+      syncFromRoute(readAppRouteFromLocation());
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [syncFromRoute]);
+
+  if (isLoading || !user || !routeReady) {
     return (
       <div
         style={{
@@ -62,24 +139,63 @@ export default function Home() {
     );
   }
 
+  const isLadleShell = ladleShellActive;
   const isHotMetalTrough = selectedDeviceType === 'hot-metal-trough';
   const isHotMetalTroughSim = selectedDeviceType === 'hot-metal-trough-sim';
   const isLadleRecognition = selectedDeviceType === 'ladle-recognition';
-  const isImmersiveTwin = isHotMetalTrough || isHotMetalTroughSim || isLadleRecognition;
-  const isReportView = activeNav === 'reports';
+  const isImmersiveTwin = !isLadleShell && (isHotMetalTrough || isHotMetalTroughSim || isLadleRecognition);
+  const isReportView = !isLadleShell && activeNav === 'reports';
   const deviceConfig = selectedWinCC ? getDeviceTypeConfig(selectedWinCC.deviceType) : null;
   const effectiveSidebarCollapsed = sidebarCollapsed || isNarrowViewport;
+  const unreadAlarmCount = isLadleShell ? ladleUnreadAlarmCount : troughUnreadAlarmCount;
 
   const handleSelectDeviceType = (deviceType: DeviceType) => {
-    const grouped = groupWinCCByDeviceType();
-    const instances = grouped[deviceType] || [];
-    setSelectedDeviceType(deviceType);
-    setSelectedWinCC(instances[0] ?? null);
+    navigateTo({
+      nav: 'dashboard',
+      deviceType,
+      ladlePanelMode: 'selector',
+      ladleShellActive: false,
+    });
+  };
+
+  const handleEnterLadleWorkspace = () => {
+    navigateTo({
+      nav: defaultLadleNav,
+      deviceType: 'ladle-recognition',
+      ladlePanelMode: 'selector',
+      ladleShellActive: true,
+    });
+  };
+
+  const handleSelectLadleRadar = () => {
+    navigateTo({
+      nav: 'dashboard',
+      deviceType: 'ladle-recognition',
+      ladlePanelMode: 'radar',
+      ladleShellActive: false,
+    });
+  };
+
+  const handleBackFromLadleRadar = () => {
+    navigateTo({
+      nav: 'dashboard',
+      deviceType: 'ladle-recognition',
+      ladlePanelMode: 'selector',
+      ladleShellActive: false,
+    });
   };
 
   const handleBackToOverview = () => {
-    setSelectedDeviceType(null);
-    setSelectedWinCC(null);
+    navigateTo(createDefaultAppRoute());
+  };
+
+  const handleBackToLadleModeSelector = () => {
+    navigateTo({
+      nav: 'dashboard',
+      deviceType: 'ladle-recognition',
+      ladlePanelMode: 'selector',
+      ladleShellActive: false,
+    });
   };
 
   const renderDashboard = () => {
@@ -90,6 +206,16 @@ export default function Home() {
           selectedDeviceType={selectedDeviceType}
           onSelectWinCC={setSelectedWinCC}
           onBack={handleBackToOverview}
+          ladlePanelMode={ladlePanelMode}
+          onSelectLadleRadar={
+            selectedDeviceType === 'ladle-recognition' ? handleSelectLadleRadar : undefined
+          }
+          onBackFromLadleRadar={
+            selectedDeviceType === 'ladle-recognition' ? handleBackFromLadleRadar : undefined
+          }
+          onEnterLadleWorkspace={
+            selectedDeviceType === 'ladle-recognition' ? handleEnterLadleWorkspace : undefined
+          }
         />
       );
     }
@@ -105,25 +231,40 @@ export default function Home() {
     );
   };
 
-  const renderPlaceholder = (title: string, description: string) => (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        minHeight: 400,
-        color: 'var(--text-tertiary)',
-      }}
-    >
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🚧</div>
-      <div style={{ fontSize: 18, color: 'var(--text-secondary)', marginBottom: 8 }}>{title}</div>
-      <div style={{ fontSize: 13 }}>{description}</div>
-    </div>
-  );
+  const renderLadleContent = () => {
+    const monitor = (
+      <LadleRecognitionMonitor
+        embedded
+        onBack={handleBackToLadleModeSelector}
+        wincc={selectedWinCC ?? undefined}
+      />
+    );
+
+    if (!isLadleNavId(activeNav)) return monitor;
+
+    switch (activeNav) {
+      case 'ladle-monitor':
+        return monitor;
+      case 'ladle-query':
+        return <LadleDataQuery />;
+      case 'ladle-curves':
+        return <LadleCurveAnalysis />;
+      case 'ladle-alarms':
+        return <LadleAlarmCenter />;
+      case 'ladle-manage':
+        return <LadleManagement />;
+      case 'ladle-manual':
+        return <LadleUserManual />;
+      default:
+        return monitor;
+    }
+  };
 
   const renderContent = () => {
+    if (isLadleShell) {
+      return renderLadleContent();
+    }
+
     switch (activeNav) {
       case 'dashboard':
         return renderDashboard();
@@ -139,19 +280,35 @@ export default function Home() {
         return <AlarmCenter />;
       case 'settings':
         return <WeeklyReportQuery />;
+      case 'manual':
+        return isTroughProductMode
+          ? renderDashboard()
+          : <UserManual onOpenLadle={() => handleSelectDeviceType('ladle-recognition')} />;
       case 'help':
-        return renderPlaceholder('帮助文档', '使用说明和帮助文档编写中...');
+        return isTroughProductMode
+          ? renderDashboard()
+          : <UserManual onOpenLadle={() => handleSelectDeviceType('ladle-recognition')} />;
       default:
         return renderDashboard();
     }
   };
 
   const handleNavChange = (navId: string) => {
-    setActiveNav(navId);
-    if (navId !== 'dashboard') {
-      setSelectedDeviceType(null);
-      setSelectedWinCC(null);
-    }
+    navigateTo({
+      nav: navId,
+      deviceType: null,
+      ladlePanelMode: 'selector',
+      ladleShellActive: false,
+    });
+  };
+
+  const handleLadleNavChange = (navId: LadleNavId) => {
+    navigateTo({
+      nav: navId,
+      deviceType: 'ladle-recognition',
+      ladlePanelMode: 'selector',
+      ladleShellActive: true,
+    });
   };
 
   const navTitles: Record<string, string> = {
@@ -162,15 +319,23 @@ export default function Home() {
     ladles: '钢包管理',
     alarms: '告警中心',
     settings: '查询周报',
-    help: '帮助文档',
+    manual: '用户使用手册',
+    help: '用户使用手册',
+    ...ladleNavTitles,
   };
 
   const getCurrentTitle = () => {
+    if (isLadleShell && isLadleNavId(activeNav)) {
+      return ladleNavTitles[activeNav];
+    }
     if (activeNav === 'dashboard' && selectedDeviceType === 'hot-metal-trough-sim') {
       return '铁水沟一视觉仿真';
     }
     if (activeNav === 'dashboard' && selectedDeviceType === 'hot-metal-trough') {
       return '铁水沟数字孪生';
+    }
+    if (activeNav === 'dashboard' && selectedDeviceType === 'ladle-recognition' && ladlePanelMode === 'radar') {
+      return '雷达渣线检测';
     }
     if (activeNav === 'dashboard' && selectedDeviceType === 'ladle-recognition') {
       return '钢包识别';
@@ -181,6 +346,10 @@ export default function Home() {
     return navTitles[activeNav];
   };
 
+  const contentPadding = isLadleShell
+    ? (activeNav === 'ladle-monitor' ? 0 : (isNarrowViewport ? 12 : 20))
+    : (isImmersiveTwin ? 0 : isNarrowViewport ? 12 : isReportView ? 16 : 20);
+
   return (
     <div
       style={{
@@ -190,13 +359,24 @@ export default function Home() {
         background: 'var(--void)',
       }}
     >
-      <Sidebar
-        activeNav={activeNav}
-        onNavChange={handleNavChange}
-        unreadAlarmCount={unreadAlarmCount}
-        collapsed={effectiveSidebarCollapsed}
-        onToggleCollapse={isNarrowViewport ? undefined : () => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+      {isLadleShell ? (
+        <LadleSidebar
+          activeNav={isLadleNavId(activeNav) ? activeNav : defaultLadleNav}
+          onNavChange={handleLadleNavChange}
+          onBackToModeSelector={handleBackToLadleModeSelector}
+          unreadAlarmCount={unreadAlarmCount}
+          collapsed={effectiveSidebarCollapsed}
+          onToggleCollapse={isNarrowViewport ? undefined : () => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+      ) : (
+        <Sidebar
+          activeNav={activeNav}
+          onNavChange={handleNavChange}
+          unreadAlarmCount={unreadAlarmCount}
+          collapsed={effectiveSidebarCollapsed}
+          onToggleCollapse={isNarrowViewport ? undefined : () => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+      )}
 
       <main
         style={{
@@ -207,7 +387,8 @@ export default function Home() {
           flexDirection: 'column',
           overflow: 'hidden',
         }}
-      >        <header
+      >
+        <header
           style={{
             height: 56,
             display: 'flex',
@@ -223,6 +404,23 @@ export default function Home() {
             <h1 style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)' }}>
               {getCurrentTitle()}
             </h1>
+            {isLadleShell && (
+              <button
+                type="button"
+                onClick={handleBackToLadleModeSelector}
+                style={{
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                  background: 'var(--surface-hover)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                返回功能选择
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
@@ -280,8 +478,8 @@ export default function Home() {
           style={{
             flex: 1,
             minHeight: 0,
-            overflow: isImmersiveTwin || isReportView ? 'hidden' : 'auto',
-            padding: isImmersiveTwin ? 0 : isNarrowViewport ? 12 : isReportView ? 16 : 20,
+            overflow: isLadleShell && activeNav === 'ladle-monitor' ? 'hidden' : 'auto',
+            padding: contentPadding,
           }}
         >
           {renderContent()}

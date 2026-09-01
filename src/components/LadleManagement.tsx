@@ -1,98 +1,352 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { CalendarClock, ClipboardList, PackagePlus, Search, Wrench } from 'lucide-react';
-import { conditionLabel, ladleAssets, type LadleAsset, type LadleCondition } from '@/data/ladle-assets';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, ClipboardList, PackagePlus, RefreshCw, Search, Trash2, Wrench } from 'lucide-react';
+import {
+  buildLadleListPath,
+  createLadle,
+  deleteLadles,
+  formatLadleDateTime,
+  getLadleById,
+  queryLadleList,
+  updateLadle,
+} from '@/data/ladle-api-config';
+import {
+  buildApiUrl,
+  canUseMockData,
+  isMockOnly,
+  unwrapApiData,
+} from '@/lib/api-config';
+import type { LadleEntity, LadleListQuery, LadleStatusCode } from '@/types/ladle-api';
+import { ladleStatusLabels } from '@/types/ladle-api';
 import styles from './LadleManagement.module.css';
 
-const statusClass: Record<LadleCondition, string> = { normal: 'safe', attention: 'warning', maintenance: 'danger' };
+type ApiStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
 
-function conditionText(asset: LadleAsset) {
-  if (asset.condition === 'maintenance') return '已达到停用检修条件';
-  if (asset.condition === 'attention') return '渣线磨损进入关注区间';
-  return '检测指标处于可用区间';
-}
+const statusClass: Record<LadleStatusCode, string> = {
+  '1': 'safe',
+  '2': 'danger',
+  '3': 'warning',
+  '4': 'danger',
+};
+
+const emptyForm = (): Omit<LadleEntity, 'id'> => ({
+  ladleNo: '',
+  productionDate: '2026-07-20',
+  plannedLifespan: 500,
+  estimatedRemainingLife: 400,
+  latestTemperature: 300,
+  lastMaintenanceTime: '2026-07-30',
+  totalUsageCount: 0,
+  currentStatus: '1',
+});
 
 export default function LadleManagement() {
-  const [assetRegister, setAssetRegister] = useState(ladleAssets);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | LadleCondition>('all');
-  const [selectedId, setSelectedId] = useState(ladleAssets[0].id);
+  const [filter, setFilter] = useState<'all' | LadleStatusCode>('all');
+  const [pageNum, setPageNum] = useState(1);
+  const [rows, setRows] = useState<LadleEntity[]>([]);
+  const [total, setTotal] = useState(0);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<LadleEntity | null>(null);
   const [notice, setNotice] = useState('');
-  const assets = useMemo(() => assetRegister.filter((asset) => (filter === 'all' || asset.condition === filter) && asset.id.includes(query.trim().toUpperCase())), [assetRegister, filter, query]);
-  const selected = assetRegister.find((asset) => asset.id === selectedId) ?? assetRegister[0];
-  const normalCount = assetRegister.filter((asset) => asset.condition === 'normal').length;
-  const attentionCount = assetRegister.filter((asset) => asset.condition === 'attention').length;
-  const maintenanceCount = assetRegister.filter((asset) => asset.condition === 'maintenance').length;
+  const [status, setStatus] = useState<ApiStatus>('idle');
+  const [form, setForm] = useState(emptyForm());
+  const [editing, setEditing] = useState(false);
 
-  const createAsset = () => {
-    const id = `A${3316 + assetRegister.length}`;
-    const asset: LadleAsset = {
-      id,
-      condition: 'normal',
-      useCount: 0,
-      monthlyUses: 0,
-      lastTemperature: 0,
-      slagDepth: 0,
-      lastInspection: '待首次检测',
-      commissionedAt: '待投用',
-      lastRepair: '—',
-      designLife: 500,
-      remainingLife: 500,
-      owner: '炼钢二厂 · 热修位',
-      nextAction: '完成首次检测后投入使用',
-    };
-    setAssetRegister((previous) => [asset, ...previous]);
-    setSelectedId(id);
-    setNotice(`已创建 ${id} 钢包档案，等待录入首次检测数据。`);
+  const listQuery = useMemo<LadleListQuery>(() => ({
+    ladleNo: query.trim() || undefined,
+    currentStatus: filter === 'all' ? undefined : filter,
+    pageNum,
+    pageSize: 10,
+  }), [filter, pageNum, query]);
+
+  const loadList = async () => {
+    if (isMockOnly) {
+      const result = queryLadleList(listQuery);
+      setRows(result.rows);
+      setTotal(result.total);
+      setStatus('mock');
+      if (result.rows[0] && !selectedId) setSelectedId(result.rows[0].id);
+      return;
+    }
+
+    setStatus('loading');
+    try {
+      const response = await fetch(buildApiUrl(buildLadleListPath(listQuery)), {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json() as unknown;
+      const data = unwrapApiData(payload) as { rows?: LadleEntity[]; total?: number };
+      const nextRows = Array.isArray(data.rows) ? data.rows : [];
+      setRows(nextRows);
+      setTotal(typeof data.total === 'number' ? data.total : 0);
+      setStatus('success');
+      if (nextRows[0] && !selectedId) setSelectedId(nextRows[0].id);
+    } catch {
+      if (canUseMockData) {
+        const result = queryLadleList(listQuery);
+        setRows(result.rows);
+        setTotal(result.total);
+        setStatus('fallback');
+      } else {
+        setRows([]);
+        setTotal(0);
+        setStatus('error');
+      }
+    }
+  };
+
+  const loadDetail = async (id: number) => {
+    if (isMockOnly || canUseMockData) {
+      setSelected(getLadleById(id).data);
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl(`/ladle/${id}`), {
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json() as unknown;
+      setSelected(unwrapApiData(payload) as LadleEntity);
+    } catch {
+      setSelected(getLadleById(id).data);
+    }
+  };
+
+  useEffect(() => {
+    void loadList();
+  }, [listQuery]);
+
+  useEffect(() => {
+    if (selectedId !== null) void loadDetail(selectedId);
+  }, [selectedId]);
+
+  const normalCount = rows.filter((item) => item.currentStatus === '1').length;
+  const attentionCount = rows.filter((item) => item.currentStatus === '3').length;
+  const maintenanceCount = rows.filter((item) => ['2', '4'].includes(item.currentStatus)).length;
+  const totalPages = Math.max(1, Math.ceil(total / 10));
+
+  const submitCreate = async () => {
+    const payload = { ...form, ladleNo: form.ladleNo.trim() };
+    if (!payload.ladleNo) {
+      setNotice('请填写钢包号');
+      return;
+    }
+
+    if (isMockOnly || canUseMockData) {
+      createLadle(payload);
+      setEditing(false);
+      setForm(emptyForm());
+      await loadList();
+      setNotice(`已创建钢包 ${payload.ladleNo}`);
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl('/ladle'), {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setEditing(false);
+      setForm(emptyForm());
+      await loadList();
+      setNotice(`已创建钢包 ${payload.ladleNo}`);
+    } catch {
+      createLadle(payload);
+      setEditing(false);
+      setForm(emptyForm());
+      await loadList();
+      setNotice('接口异常，已在本地演示环境中创建');
+    }
+  };
+
+  const submitUpdate = async () => {
+    if (!selected) return;
+    const payload = { ...selected, ...form, id: selected.id };
+
+    if (isMockOnly || canUseMockData) {
+      updateLadle(payload);
+      setNotice(`已更新钢包 ${payload.ladleNo}`);
+      setEditing(false);
+      void loadList();
+      void loadDetail(payload.id);
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl('/ladle'), {
+        method: 'PUT',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setNotice(`已更新钢包 ${payload.ladleNo}`);
+      setEditing(false);
+      void loadList();
+      void loadDetail(payload.id);
+    } catch {
+      updateLadle(payload);
+      setNotice('接口异常，已在本地演示环境中更新');
+      void loadDetail(payload.id);
+    }
+  };
+
+  const removeSelected = async () => {
+    if (!selected) return;
+
+    if (isMockOnly || canUseMockData) {
+      deleteLadles([selected.id]);
+      setNotice(`已删除钢包 ${selected.ladleNo}`);
+      setSelectedId(null);
+      setSelected(null);
+      void loadList();
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl(`/ladle/${selected.id}`), { method: 'DELETE' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setNotice(`已删除钢包 ${selected.ladleNo}`);
+      setSelectedId(null);
+      setSelected(null);
+      void loadList();
+    } catch {
+      deleteLadles([selected.id]);
+      setNotice('接口异常，已在本地演示环境中删除');
+      void loadList();
+    }
   };
 
   return (
     <section className={styles.shell} aria-label="钢包管理">
       <header className={styles.pageHeader}>
         <div>
-          <span className={styles.eyebrow}><ClipboardList size={14} aria-hidden="true" /> 铁包资产台账</span>
+          <span className={styles.eyebrow}><ClipboardList size={14} aria-hidden="true" /> 钢包档案</span>
           <h2>钢包管理</h2>
-          <p>钢包档案、检测记录、使用寿命与检修计划统一归档。</p>
+          <p>对接 `/ladle` 增删改查与分页列表，状态字段映射文档 `currentStatus`。</p>
         </div>
-        <button type="button" className={styles.primaryButton} onClick={createAsset}><PackagePlus size={16} aria-hidden="true" /> 新建钢包档案</button>
+        <button
+          type="button"
+          className={styles.primaryButton}
+          onClick={() => {
+            setEditing(true);
+            setForm(emptyForm());
+          }}
+        >
+          <PackagePlus size={16} aria-hidden="true" /> 新建钢包
+        </button>
       </header>
 
       {notice && <div className={styles.notice} role="status">{notice}</div>}
 
       <div className={styles.summary}>
-        <div><span>在册钢包</span><b>{assetRegister.length}</b><em>当前纳入在线管理</em></div>
-        <div><span>使用中</span><b className={styles.safe}>{normalCount}</b><em>检测指标正常</em></div>
-        <div><span>需关注</span><b className={styles.warning}>{attentionCount}</b><em>已生成复检建议</em></div>
-        <div><span>待检修</span><b className={styles.danger}>{maintenanceCount}</b><em>需要安排停用窗口</em></div>
+        <div><span>在册钢包</span><b>{total}</b><em>{status === 'loading' ? '加载中' : '分页查询总数'}</em></div>
+        <div><span>使用中</span><b className={styles.safe}>{normalCount}</b><em>状态 1</em></div>
+        <div><span>需关注</span><b className={styles.warning}>{attentionCount}</b><em>状态 3</em></div>
+        <div><span>待检修/检修中</span><b className={styles.danger}>{maintenanceCount}</b><em>状态 2 / 4</em></div>
       </div>
 
       <div className={styles.layout}>
         <section className={styles.registry}>
           <div className={styles.registryHeader}>
-            <div><h3>钢包档案</h3><p>点击条目查看完整生命周期档案</p></div>
-            <span>共 {assets.length} 条</span>
+            <div><h3>钢包档案</h3><p>GET /ladle/list</p></div>
+            <button type="button" className={styles.primaryButton} onClick={() => void loadList()}>
+              <RefreshCw size={14} aria-hidden="true" /> 刷新
+            </button>
           </div>
           <div className={styles.filters}>
-            <label><Search size={15} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索钢包编号" aria-label="搜索钢包编号" /></label>
-            <select value={filter} onChange={(event) => setFilter(event.target.value as 'all' | LadleCondition)} aria-label="按状态筛选钢包"><option value="all">全部状态</option><option value="normal">使用中</option><option value="attention">需关注</option><option value="maintenance">待检修</option></select>
+            <label><Search size={15} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索钢包编号" /></label>
+            <select value={filter} onChange={(event) => setFilter(event.target.value as 'all' | LadleStatusCode)}>
+              <option value="all">全部状态</option>
+              <option value="1">使用中</option>
+              <option value="3">需关注</option>
+              <option value="2">待检修</option>
+              <option value="4">正在检修</option>
+            </select>
           </div>
           <div className={styles.tableWrap}>
             <table>
-              <thead><tr><th>包号</th><th>状态</th><th>累计使用</th><th>渣线深度</th><th>最近检测</th><th aria-label="操作" /></tr></thead>
-              <tbody>{assets.map((asset) => <tr key={asset.id} className={asset.id === selected.id ? styles.selectedRow : ''} onClick={() => setSelectedId(asset.id)}><td><b>{asset.id}</b><small>{asset.owner}</small></td><td><span className={`${styles.badge} ${styles[statusClass[asset.condition]]}`}>{conditionLabel[asset.condition]}</span></td><td>{asset.useCount} 次<small>本月 {asset.monthlyUses} 次</small></td><td className={styles[statusClass[asset.condition]]}>{asset.slagDepth.toFixed(1)} mm</td><td>{asset.lastInspection}<small>{asset.lastTemperature}°C</small></td><td><button type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(asset.id); }}>查看档案</button></td></tr>)}</tbody>
+              <thead><tr><th>包号</th><th>状态</th><th>累计使用</th><th>最近温度</th><th>上次检修</th></tr></thead>
+              <tbody>
+                {rows.map((asset) => (
+                  <tr key={asset.id} className={asset.id === selectedId ? styles.selectedRow : ''} onClick={() => setSelectedId(asset.id)}>
+                    <td><b>{asset.ladleNo}</b><small>ID {asset.id}</small></td>
+                    <td><span className={`${styles.badge} ${styles[statusClass[asset.currentStatus]]}`}>{ladleStatusLabels[asset.currentStatus]}</span></td>
+                    <td>{asset.totalUsageCount} 次</td>
+                    <td>{asset.latestTemperature}°C</td>
+                    <td>{asset.lastMaintenanceTime}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
-            {assets.length === 0 && <p className={styles.empty}>未找到符合条件的钢包档案。</p>}
+            {rows.length === 0 && <p className={styles.empty}>未找到符合条件的钢包档案。</p>}
+          </div>
+          <div className={styles.filters} style={{ justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--muted)', fontSize: 11 }}>第 {pageNum} / {totalPages} 页</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className={styles.primaryButton} disabled={pageNum <= 1} onClick={() => setPageNum((value) => Math.max(1, value - 1))}>上一页</button>
+              <button type="button" className={styles.primaryButton} disabled={pageNum >= totalPages} onClick={() => setPageNum((value) => Math.min(totalPages, value + 1))}>下一页</button>
+            </div>
           </div>
         </section>
 
-        <aside className={styles.detail} aria-label={`${selected.id} 档案详情`}>
-          <div className={styles.detailHead}><div><span>当前档案</span><h3>{selected.id}</h3></div><span className={`${styles.badge} ${styles[statusClass[selected.condition]]}`}>{conditionLabel[selected.condition]}</span></div>
-          <p className={styles.statusText}>{conditionText(selected)}</p>
-          <div className={styles.metrics}><div><span>累计使用</span><b>{selected.useCount}<small>次</small></b></div><div><span>剩余寿命预估</span><b>{selected.remainingLife}<small>次</small></b></div><div><span>最近渣线深度</span><b className={styles[statusClass[selected.condition]]}>{selected.slagDepth.toFixed(1)}<small>mm</small></b></div><div><span>最近温度</span><b>{selected.lastTemperature}<small>°C</small></b></div></div>
-          <div className={styles.life}><div><span>设计寿命</span><b>{selected.designLife} 次</b></div><div className={styles.lifeBar}><i style={{ width: `${Math.min(100, (selected.useCount / selected.designLife) * 100)}%` }} /></div><span>已使用 {Math.round((selected.useCount / selected.designLife) * 100)}%</span></div>
-          <dl><div><dt>投用日期</dt><dd>{selected.commissionedAt}</dd></div><div><dt>上次热修</dt><dd>{selected.lastRepair}</dd></div><div><dt>最后检测</dt><dd>{selected.lastInspection}</dd></div><div><dt>责任工位</dt><dd>{selected.owner}</dd></div></dl>
-          <section className={styles.plan}><div><CalendarClock size={17} aria-hidden="true" /><h4>下一步处置</h4></div><p>{selected.nextAction}</p><button type="button" onClick={() => setNotice(`已为 ${selected.id} 登记热修计划，待工位负责人确认检修窗口。`)}><Wrench size={15} aria-hidden="true" /> 登记热修计划</button></section>
+        <aside className={styles.detail} aria-label="钢包档案详情">
+          {editing ? (
+            <>
+              <div className={styles.detailHead}><div><span>{selected ? '编辑钢包' : '新建钢包'}</span><h3>{form.ladleNo || '待填写'}</h3></div></div>
+              <div className={styles.filters} style={{ flexDirection: 'column' }}>
+                <label>钢包号<input value={form.ladleNo} onChange={(event) => setForm((current) => ({ ...current, ladleNo: event.target.value }))} /></label>
+                <label>投产时间<input value={form.productionDate} onChange={(event) => setForm((current) => ({ ...current, productionDate: event.target.value }))} /></label>
+                <label>计划寿命<input type="number" value={form.plannedLifespan} onChange={(event) => setForm((current) => ({ ...current, plannedLifespan: Number(event.target.value) }))} /></label>
+                <label>剩余寿命<input type="number" value={form.estimatedRemainingLife} onChange={(event) => setForm((current) => ({ ...current, estimatedRemainingLife: Number(event.target.value) }))} /></label>
+                <label>最近温度<input type="number" value={form.latestTemperature} onChange={(event) => setForm((current) => ({ ...current, latestTemperature: Number(event.target.value) }))} /></label>
+                <label>累计使用<input type="number" value={form.totalUsageCount} onChange={(event) => setForm((current) => ({ ...current, totalUsageCount: Number(event.target.value) }))} /></label>
+                <label>上次检修<input value={form.lastMaintenanceTime} onChange={(event) => setForm((current) => ({ ...current, lastMaintenanceTime: event.target.value }))} /></label>
+                <label>
+                  状态
+                  <select value={form.currentStatus} onChange={(event) => setForm((current) => ({ ...current, currentStatus: event.target.value as LadleStatusCode }))}>
+                    {Object.entries(ladleStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className={styles.filters}>
+                <button type="button" className={styles.primaryButton} onClick={() => void (selected ? submitUpdate() : submitCreate())}>保存</button>
+                <button type="button" className={styles.primaryButton} onClick={() => setEditing(false)}>取消</button>
+              </div>
+            </>
+          ) : selected ? (
+            <>
+              <div className={styles.detailHead}><div><span>当前档案</span><h3>{selected.ladleNo}</h3></div><span className={`${styles.badge} ${styles[statusClass[selected.currentStatus]]}`}>{ladleStatusLabels[selected.currentStatus]}</span></div>
+              <p className={styles.statusText}>最近更新 {selected.updateTime ?? selected.createTime ?? formatLadleDateTime(new Date())}</p>
+              <div className={styles.metrics}>
+                <div><span>累计使用</span><b>{selected.totalUsageCount}<small>次</small></b></div>
+                <div><span>剩余寿命预估</span><b>{selected.estimatedRemainingLife}<small>次</small></b></div>
+                <div><span>计划寿命</span><b>{selected.plannedLifespan}<small>次</small></b></div>
+                <div><span>最近温度</span><b>{selected.latestTemperature}<small>°C</small></b></div>
+              </div>
+              <dl>
+                <div><dt>投产日期</dt><dd>{selected.productionDate}</dd></div>
+                <div><dt>上次检修</dt><dd>{selected.lastMaintenanceTime}</dd></div>
+                <div><dt>创建时间</dt><dd>{selected.createTime ?? '—'}</dd></div>
+                <div><dt>记录 ID</dt><dd>{selected.id}</dd></div>
+              </dl>
+              <section className={styles.plan}>
+                <div><CalendarClock size={17} aria-hidden="true" /><h4>档案操作</h4></div>
+                <p>支持 PUT /ladle 更新与 DELETE /ladle/{'{ids}'} 删除。</p>
+                <div className={styles.filters}>
+                  <button type="button" onClick={() => { setEditing(true); setForm({ ...selected }); }}><Wrench size={15} aria-hidden="true" /> 编辑档案</button>
+                  <button type="button" onClick={() => void removeSelected()}><Trash2 size={15} aria-hidden="true" /> 删除档案</button>
+                </div>
+              </section>
+            </>
+          ) : (
+            <p className={styles.empty}>请选择一条钢包档案。</p>
+          )}
         </aside>
       </div>
     </section>

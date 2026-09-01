@@ -20,6 +20,7 @@
     "docker:run": "docker run --rm -p 3001:8080 wincc:latest",
     "start": "node scripts/serve-static.mjs",
     "test:e2e:api": "node scripts/e2e-api-smoke.mjs",
+    "test:e2e:ladle": "node scripts/e2e-ladle-smoke.mjs",
     "lint": "eslint"
   },
   "dependencies": {

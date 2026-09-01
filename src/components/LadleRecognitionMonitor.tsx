@@ -12,12 +12,21 @@ import {
   Thermometer,
 } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
+import {
+  getCurrentDayInferenceCount,
+  ladleThermalDeviceLabels,
+  queryLatestLadleRecords,
+  reconnectModbusDevice,
+} from '@/data/ladle-api-config';
+import { useLadleModbusFeed } from '@/hooks/useLadleModbusFeed';
+import { buildApiUrl, canUseMockData, isMockOnly, unwrapApiData } from '@/lib/api-config';
 import workspaceStyles from './MonitoringWorkspace.module.css';
 import styles from './LadleRecognitionMonitor.module.css';
 
 interface LadleRecognitionMonitorProps {
-  onBack: () => void;
+  onBack?: () => void;
   wincc?: WinCCInstance;
+  embedded?: boolean;
 }
 
 type DeviceKind = 'thermal' | 'ocr' | 'radar';
@@ -179,13 +188,28 @@ function TempMetricCard({ feed }: { feed: ThermalFeed }) {
   );
 }
 
-export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognitionMonitorProps) {
-  const [feeds, setFeeds] = useState(initialFeeds);
+const deviceIdToFeedId: Record<string, string> = {
+  '11_1': 'IR-01',
+  '12_1': 'IR-02',
+  '17_1': 'IR-03',
+};
+
+export default function LadleRecognitionMonitor({ onBack, wincc, embedded = false }: LadleRecognitionMonitorProps) {
+  const modbusFeed = useLadleModbusFeed();
   const [clock, setClock] = useState(() => new Date());
+  const [inferenceCount, setInferenceCount] = useState(47);
+  const [latestRecords, setLatestRecords] = useState(initialFeeds.map((feed, index) => ({
+    id: `latest-${index}`,
+    pkg: 'Y-111',
+    time: '2026-07-30 13:49:26',
+    temp: feed.temp,
+    camera: feed.id,
+  })));
   const [selectedRecord, setSelectedRecord] = useState(ocrRecords[0]);
-  const [selectedPkg, setSelectedPkg] = useState('A3256');
+  const [selectedPkg, setSelectedPkg] = useState('Y-111');
   const [scanProgress, setScanProgress] = useState(0);
   const [scanning, setScanning] = useState(false);
+  const [reconnectMessage, setReconnectMessage] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date()), 1000);
@@ -193,22 +217,94 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setFeeds((prev) =>
-        prev.map((feed) => {
-          const delta = Math.round((Math.random() - 0.48) * 4);
-          const temp = Math.max(feed.min + 10, Math.min(feed.max + 20, feed.temp + delta));
-          return {
-            ...feed,
-            temp,
-            max: Math.max(feed.max, temp),
-            avg: Math.round(feed.avg * 0.92 + temp * 0.08),
-          };
-        }),
-      );
-    }, 2200);
-    return () => clearInterval(timer);
+    const loadDashboardMetrics = async () => {
+      if (isMockOnly) {
+        setInferenceCount(getCurrentDayInferenceCount().data);
+        const latest = queryLatestLadleRecords().data;
+        setLatestRecords(latest.map((record) => ({
+          id: String(record.id),
+          pkg: record.ladleNo,
+          time: record.recordTime,
+          temp: Math.round(record.maxTemp),
+          camera: record.deviceName,
+        })));
+        return;
+      }
+
+      try {
+        const [countResponse, latestResponse] = await Promise.all([
+          fetch(buildApiUrl('/ladle/dashboard/currentDayInferenceCount'), { headers: { Accept: 'application/json' } }),
+          fetch(buildApiUrl('/ladle-record/latest'), { headers: { Accept: 'application/json' } }),
+        ]);
+        if (countResponse.ok) {
+          const countPayload = await countResponse.json() as unknown;
+          const count = unwrapApiData(countPayload);
+          if (typeof count === 'number') setInferenceCount(count);
+        }
+        if (latestResponse.ok) {
+          const latestPayload = await latestResponse.json() as unknown;
+          const latest = unwrapApiData(latestPayload) as Array<{ id: number; ladleNo: string; deviceName: string; maxTemp: number; recordTime: string }>;
+          if (Array.isArray(latest)) {
+            setLatestRecords(latest.map((record) => ({
+              id: String(record.id),
+              pkg: record.ladleNo,
+              time: record.recordTime,
+              temp: Math.round(record.maxTemp),
+              camera: record.deviceName,
+            })));
+          }
+        }
+      } catch {
+        if (canUseMockData) {
+          setInferenceCount(getCurrentDayInferenceCount().data);
+          const latest = queryLatestLadleRecords().data;
+          setLatestRecords(latest.map((record) => ({
+            id: String(record.id),
+            pkg: record.ladleNo,
+            time: record.recordTime,
+            temp: Math.round(record.maxTemp),
+            camera: record.deviceName,
+          })));
+        }
+      }
+    };
+
+    void loadDashboardMetrics();
   }, []);
+
+  const feeds = useMemo(() => {
+    const tempResults = modbusFeed.payload?.tempResults ?? [];
+    return initialFeeds.map((feed) => {
+      const deviceEntry = tempResults.find((item) => deviceIdToFeedId[item.deviceId] === feed.id);
+      if (!deviceEntry || deviceEntry.avgTemp === null) return feed;
+      const temp = Math.round(deviceEntry.avgTemp);
+      return {
+        ...feed,
+        temp,
+        max: Math.round(deviceEntry.maxTemp ?? temp),
+        min: Math.round(deviceEntry.minTemp ?? temp),
+        avg: temp,
+        pkg: modbusFeed.payload?.currentLadleNo ?? feed.pkg,
+      };
+    });
+  }, [modbusFeed.payload]);
+
+  const reconnectDevice = async (deviceId: string) => {
+    if (isMockOnly || canUseMockData) {
+      const result = reconnectModbusDevice(deviceId);
+      setReconnectMessage(result.code === 200 ? `设备 ${deviceId} 重连成功` : result.msg);
+      return;
+    }
+
+    try {
+      const response = await fetch(buildApiUrl(`/ladle/modbus/reconnect/${deviceId}`), { method: 'POST' });
+      const payload = await response.json() as { msg?: string; code?: number };
+      setReconnectMessage(payload.msg ?? (response.ok ? '重连成功' : '重连失败'));
+    } catch {
+      const result = reconnectModbusDevice(deviceId);
+      setReconnectMessage(result.msg);
+    }
+  };
 
   useEffect(() => {
     if (!scanning) return;
@@ -224,20 +320,28 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
     return () => clearInterval(timer);
   }, [scanning]);
 
-  const currentPkg = useMemo(() => selectedRecord.id, [selectedRecord]);
+  const currentPkg = modbusFeed.payload?.currentLadleNo ?? selectedRecord.id;
   const title = wincc?.name ?? '钢包识别';
   const subtitle = wincc
-    ? `${wincc.location} / OCR+红外+雷达三模态协同 / 演示数据`
+    ? `${wincc.location} / OCR+红外+雷达三模态协同 / ${modbusFeed.status === 'mock' || modbusFeed.status === 'fallback' ? 'Mock 数据' : '实时接口'}`
     : '红外测温 + 雷达渣线检测 + OCR包号识别';
 
   return (
     <section className={styles.simShell} aria-label="钢包智能监测实时监控">
       <header className={`${styles.topBar} ${workspaceStyles.topBar}`}>
         <div className={workspaceStyles.topBarInner}>
-          <button className={styles.backButton} type="button" onClick={onBack} aria-label="返回设备类型总览">
-            <ArrowLeft size={18} aria-hidden="true" />
-            <span>返回</span>
-          </button>
+          {!embedded && onBack && (
+            <button className={styles.backButton} type="button" onClick={onBack} aria-label="返回功能选择">
+              <ArrowLeft size={18} aria-hidden="true" />
+              <span>返回</span>
+            </button>
+          )}
+          {embedded && onBack && (
+            <button className={styles.backButton} type="button" onClick={onBack} aria-label="返回功能选择">
+              <ArrowLeft size={18} aria-hidden="true" />
+              <span>返回功能选择</span>
+            </button>
+          )}
 
           <div className={styles.titleBlock}>
             <div className={styles.titleLine}>
@@ -248,7 +352,7 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
           </div>
 
           <div className={styles.statusCluster}>
-            <span className={styles.statusPill}>系统运行中</span>
+            <span className={styles.statusPill}>{modbusFeed.message || '系统运行中'}</span>
             <span className={styles.clockPill}>
               <Clock3 size={14} aria-hidden="true" />
               {wincc?.lastUpdate ?? clock.toLocaleString('zh-CN', { hour12: false })}
@@ -290,11 +394,11 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
             </div>
             <div>
               <div className={styles.kpiLabel}>当前识别包号</div>
-              <div className={styles.pkgValue}>{currentPkg}</div>
+              <div className={styles.pkgValue}>{currentPkg ?? '未识别'}</div>
             </div>
             <div className={styles.recogResult}>
-              <div className={styles.resultOk}>✓ 识别成功</div>
-              <div className={styles.muted}>耗时 128ms | 置信度 {selectedRecord.confidence}</div>
+              <div className={styles.resultOk}>{currentPkg ? '✓ 识别成功' : '等待识别'}</div>
+              <div className={styles.muted}>WS 推送 {modbusFeed.updatedAt} | {modbusFeed.source}</div>
             </div>
           </div>
           <div className={styles.recogMetric}>
@@ -302,10 +406,12 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
             <div className={styles.kpiLabel}>今日识别准确率</div>
           </div>
           <div className={styles.recogMetric}>
-            <div className={styles.kpiValue}>47</div>
+            <div className={styles.kpiValue}>{inferenceCount}</div>
             <div className={styles.kpiLabel}>今日识别次数</div>
           </div>
         </div>
+
+        {reconnectMessage && <div className={styles.muted} role="status">{reconnectMessage}</div>}
 
         <div className={styles.sectionLabel}>
           <Thermometer size={13} aria-hidden="true" />
@@ -323,16 +429,24 @@ export default function LadleRecognitionMonitor({ onBack, wincc }: LadleRecognit
           ))}
         </div>
 
+        <div className={styles.scanActions}>
+          {Object.entries(ladleThermalDeviceLabels).map(([deviceId, label]) => (
+            <button key={deviceId} type="button" className={styles.primaryBtn} onClick={() => void reconnectDevice(deviceId)}>
+              重连 {label}
+            </button>
+          ))}
+        </div>
+
         <section className={styles.panel}>
           <div className={styles.panelHead}>
             <h3>
               <Camera size={15} color="#22d3ee" />
-              上一次测温截图 — 包号 {snapshots[0].pkg}
+              上一次测温截图 — 包号 {latestRecords[0]?.pkg ?? '—'}
             </h3>
-            <span>{snapshots[0].time} | 点击截图可放大查看</span>
+            <span>{latestRecords[0]?.time ?? '—'} | GET /ladle-record/latest</span>
           </div>
           <div className={styles.snapshotRow}>
-            {snapshots.map((snap, index) => (
+            {latestRecords.map((snap, index) => (
               <button type="button" key={snap.id} className={styles.snapshotCard}>
                 <div className={styles.snapshotThumb} data-tone={index + 1}>
                   <div className={styles.thermalGlow} />

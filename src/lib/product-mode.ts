@@ -37,6 +37,9 @@ export const productMode = isProductMode(process.env.NEXT_PUBLIC_PRODUCT_MODE)
 
 export const productConfig = productMode ? productConfigs[productMode] : null;
 
+export const isLadleProductMode = productMode === 'ladle-recognition';
+export const isTroughProductMode = productMode === 'trough';
+
 /** 总览页可见设备类型：单产品模式只开对应模块，否则展示全部集成入口。 */
 export const overviewDeviceTypes: DeviceType[] = productConfig
   ? [productConfig.deviceType]
