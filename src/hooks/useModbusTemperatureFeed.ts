@@ -24,10 +24,26 @@ const WS_HEARTBEAT_INTERVAL_MS = 30000;
 const MOCK_SOCKET_BREAK_MESSAGE = '数据连接中断';
 const MOCK_SOCKET_RETRY_MESSAGE = '正在重连';
 const WS_RETRY_MESSAGE = '正在重连';
-const MOCK_LOCATION = {
-  locationId: 'loc_1',
-  locationName: '位置1',
-};
+
+/** Align with real trough push locationName so digital-twin placement can resolve by name. */
+const MOCK_LOCATIONS = [
+  { locationId: 'loc_1', locationName: '第六排左侧后', baseTemp: 106.2 },
+  { locationId: 'loc_2', locationName: '第六排左侧前', baseTemp: 86.9 },
+  { locationId: 'loc_3', locationName: '第六排右侧后', baseTemp: 174.3 },
+  { locationId: 'loc_4', locationName: '第七排左侧', baseTemp: 141.0 },
+  { locationId: 'loc_5', locationName: '第六排右侧前', baseTemp: 117.2 },
+  { locationId: 'loc_6', locationName: '第七排右侧', baseTemp: 131.2 },
+  { locationId: 'loc_7', locationName: '第一排左侧', baseTemp: 161.9 },
+  { locationId: 'loc_8', locationName: '第一排右侧', baseTemp: 176.6 },
+  { locationId: 'loc_9', locationName: '第三排左侧', baseTemp: 195.3 },
+  { locationId: 'loc_10', locationName: '第三排右侧', baseTemp: 180.2 },
+  { locationId: 'loc_11', locationName: '第四排左侧', baseTemp: 159.6 },
+  { locationId: 'loc_12', locationName: '第二排左侧', baseTemp: 177.0 },
+  { locationId: 'loc_13', locationName: '第二排右侧', baseTemp: 155.9 },
+  { locationId: 'loc_14', locationName: '第五排左侧', baseTemp: 181.5 },
+  { locationId: 'loc_15', locationName: '第五排右侧', baseTemp: 169.9 },
+  { locationId: 'loc_16', locationName: '第四排右侧', baseTemp: 179.4 },
+] as const;
 
 interface ModbusTemperatureMessage {
   locationId: string;
@@ -52,14 +68,23 @@ const formatReceivedAt = () => {
   return new Date().toLocaleTimeString('zh-CN', { hour12: false });
 };
 
-const createMockMessage = (tick: number): ModbusTemperatureMessage => {
-  const wave = Math.sin(tick * 0.74) * 0.55 + Math.cos(tick * 0.31) * 0.18;
-  const temperature = tick === 0 ? '35' : (35 + wave).toFixed(1);
+const createMockMessages = (tick: number): ModbusTemperatureMessage[] => {
+  return MOCK_LOCATIONS.map((location, index) => {
+    if (tick === 0) {
+      return {
+        locationId: location.locationId,
+        locationName: location.locationName,
+        temperature: location.baseTemp.toFixed(1),
+      };
+    }
 
-  return {
-    ...MOCK_LOCATION,
-    temperature,
-  };
+    const wave = Math.sin(tick * 0.74 + index * 0.45) * 2.4 + Math.cos(tick * 0.31 + index * 0.2) * 1.1;
+    return {
+      locationId: location.locationId,
+      locationName: location.locationName,
+      temperature: (location.baseTemp + wave).toFixed(1),
+    };
+  });
 };
 
 const normalizeMessage = (
@@ -108,8 +133,8 @@ const parseSocketPayload = (data: unknown) => {
   }
 };
 
-const createMockPoint = (tick: number, source: ModbusFeedSource) => {
-  return normalizeMessage(createMockMessage(tick), source);
+const createMockPoints = (tick: number, source: ModbusFeedSource) => {
+  return createMockMessages(tick).map((message) => normalizeMessage(message, source));
 };
 
 const mergeTemperaturePoints = (
@@ -123,11 +148,11 @@ const mergeTemperaturePoints = (
 
 const createInitialFeed = (): ModbusTemperatureFeed => {
   if (isMockOnly) {
-    const point = createMockPoint(0, 'mock');
+    const points = createMockPoints(0, 'mock');
     return {
       status: 'mock',
-      point,
-      points: [point],
+      point: points[0] ?? null,
+      points,
       message: '',
     };
   }
@@ -209,13 +234,13 @@ export function useModbusTemperatureFeed(): ModbusTemperatureFeed {
     const pushMockPoint = (status: Extract<ModbusFeedStatus, 'mock' | 'fallback'>, message: string) => {
       if (disposed) return;
       const source = status === 'fallback' ? 'fallback' : 'mock';
-      const point = createMockPoint(mockTick, source);
-      setFeed((current) => ({
+      const points = createMockPoints(mockTick, source);
+      setFeed({
         status,
-        point,
-        points: mergeTemperaturePoints(current.points, [point]),
+        point: points[mockTick % points.length] ?? points[0] ?? null,
+        points,
         message,
-      }));
+      });
       mockTick += 1;
     };
 

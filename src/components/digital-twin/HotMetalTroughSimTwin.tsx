@@ -42,24 +42,24 @@ interface LayerConfig {
   legendMax: string;
 }
 
-/** 与三维场景 16 个表面测点一一对应 */
-const MONITOR_SLOTS = [
-  { id: 'loc_1', label: '测点 01' },
-  { id: 'loc_2', label: '测点 02' },
-  { id: 'loc_3', label: '测点 03' },
-  { id: 'loc_4', label: '测点 04' },
-  { id: 'loc_5', label: '测点 05' },
-  { id: 'loc_6', label: '测点 06' },
-  { id: 'loc_7', label: '测点 07' },
-  { id: 'loc_8', label: '测点 08' },
-  { id: 'loc_9', label: '测点 09' },
-  { id: 'loc_10', label: '测点 10' },
-  { id: 'loc_11', label: '测点 11' },
-  { id: 'loc_12', label: '测点 12' },
-  { id: 'loc_13', label: '测点 13' },
-  { id: 'loc_14', label: '测点 14' },
-  { id: 'loc_15', label: '测点 15' },
-  { id: 'loc_16', label: '测点 16' },
+/** 右侧列表按第1～7排中文名固定顺序展示，避免随 locationId 跳动 */
+const MONITOR_DISPLAY_ORDER = [
+  '第一排左侧',
+  '第一排右侧',
+  '第二排左侧',
+  '第二排右侧',
+  '第三排左侧',
+  '第三排右侧',
+  '第四排左侧',
+  '第四排右侧',
+  '第五排左侧',
+  '第五排右侧',
+  '第六排左侧前',
+  '第六排左侧后',
+  '第六排右侧前',
+  '第六排右侧后',
+  '第七排左侧',
+  '第七排右侧',
 ] as const;
 
 const cadLayerConfig: LayerConfig = {
@@ -83,6 +83,13 @@ const normalizeLocationId = (locationId: string) => (
   locationId.toLowerCase().replace(/^loc_0+/, 'loc_')
 );
 
+const formatPointLabel = (locationId?: string) => {
+  if (!locationId) return '测点 --';
+  const match = normalizeLocationId(locationId).match(/^loc_(\d+)$/);
+  if (!match) return locationId;
+  return `测点 ${match[1].padStart(2, '0')}`;
+};
+
 export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughSimTwinProps) {
   const activeLayer: SimulationLayer = 'cad';
   const modbusFeed = useModbusTemperatureFeed();
@@ -103,29 +110,32 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
         : modbusFeedLabels[modbusFeed.status];
   const activeConfig = cadLayerConfig;
 
-  const pointsById = useMemo(() => {
+  const pointsByName = useMemo(() => {
     const map = new Map<string, (typeof modbusPoints)[number]>();
     modbusPoints.forEach((point) => {
-      map.set(normalizeLocationId(point.locationId), point);
+      map.set(point.locationName.trim(), point);
     });
     return map;
   }, [modbusPoints]);
 
-  const latestLocationId = modbusPoint ? normalizeLocationId(modbusPoint.locationId) : '';
+  const latestLocationName = modbusPoint?.locationName.trim() ?? '';
+  const alarmLocationName = isBusinessAlarmActive ? businessAlarm?.locationName.trim() ?? '' : '';
 
   const pointRows = useMemo(() => (
-    MONITOR_SLOTS.map((slot) => {
-      const live = pointsById.get(slot.id);
+    MONITOR_DISPLAY_ORDER.map((locationName) => {
+      const live = pointsByName.get(locationName);
       return {
-        ...slot,
+        id: locationName,
+        label: formatPointLabel(live?.locationId),
         temperature: live?.temperature,
         receivedAt: live?.receivedAt,
-        locationName: live?.locationName,
+        locationName,
         isLive: Boolean(live),
-        isLatest: latestLocationId === slot.id,
+        isLatest: latestLocationName === locationName,
+        isAlarm: alarmLocationName === locationName,
       };
     })
-  ), [latestLocationId, pointsById]);
+  ), [alarmLocationName, latestLocationName, pointsByName]);
 
   const liveCount = pointRows.filter((row) => row.isLive).length;
 
@@ -175,18 +185,6 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
             feedStatus={modbusFeed.status}
             businessAlarm={businessAlarm}
           />
-
-          <div className={styles.legendStrip} aria-label="当前图层色标">
-            <div className={styles.legendHeader}>
-              <span>渲染层级</span>
-              <strong>{activeConfig.name}</strong>
-            </div>
-            <div className={`${styles.legendGradient} ${styles.cadLegend}`} aria-hidden="true" />
-            <div className={styles.legendTicks}>
-              <span>{activeConfig.legendMin}</span>
-              <span>{activeConfig.legendMax}</span>
-            </div>
-          </div>
 
           <div className={styles.sceneControls} aria-label="三维模型操作提示">
             <span>
@@ -250,13 +248,14 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
                   className={styles.pointCell}
                   data-live={row.isLive ? 'true' : 'false'}
                   data-latest={row.isLatest ? 'true' : 'false'}
+                  data-alarm={row.isAlarm ? 'true' : 'false'}
                 >
-                  <span>{row.label}</span>
+                  <span>{row.locationName}</span>
                   <strong>
                     {row.temperature !== undefined ? row.temperature.toFixed(1) : '--'}
                     <small>°C</small>
                   </strong>
-                  <em>{row.isLive ? (row.locationName || '已更新') : '暂无数据'}</em>
+                  <em>{row.isLive ? row.label : '暂无数据'}</em>
                 </div>
               ))}
             </div>

@@ -313,51 +313,127 @@ function Label({
   );
 }
 
-const modbusStatusColor: Record<ModbusFeedStatus, string> = {
-  mock: '#22d3ee',
-  connecting: '#94a3b8',
-  connected: '#34d399',
-  fallback: '#fbbf24',
-  error: '#f87171',
-  retrying: '#fbbf24',
-};
-
 interface SurfaceMonitorPoint {
-  id: string;
-  name: string;
+  /** Backend locationName, e.g. 第六排左侧后 — primary key for placement */
+  locationName: string;
   anchor: [number, number];
-  rayOrigin?: [number, number, number];
-  rayDirection?: [number, number, number];
-  temperature: number;
+  rayOrigin: [number, number, number];
+  rayDirection: [number, number, number];
   radius: number;
 }
 
-const SURFACE_MONITOR_POINTS: SurfaceMonitorPoint[] = [
-  // Every row shares the same layout: outer sensors bind to the side walls,
-  // while the two middle sensors use the one-third and two-third positions.
-  { id: 'loc_13', name: 'T13', anchor: [-3.42, 4.95], rayOrigin: [-8, 1.05, 4.95], rayDirection: [1, 0, 0], temperature: 56.8, radius: 0.12 },
-  { id: 'loc_14', name: 'T14', anchor: [-1.14, 4.95], temperature: 58.4, radius: 0.12 },
-  { id: 'loc_15', name: 'T15', anchor: [1.14, 4.95], temperature: 61.2, radius: 0.12 },
-  { id: 'loc_16', name: 'T16', anchor: [3.42, 4.95], rayOrigin: [8, 1.05, 4.95], rayDirection: [-1, 0, 0], temperature: 57.9, radius: 0.12 },
-  { id: 'loc_9', name: 'T09', anchor: [-3.42, 2.25], rayOrigin: [-8, 1.05, 2.25], rayDirection: [1, 0, 0], temperature: 54.6, radius: 0.12 },
-  { id: 'loc_10', name: 'T10', anchor: [-1.14, 2.25], temperature: 59.8, radius: 0.12 },
-  { id: 'loc_11', name: 'T11', anchor: [1.14, 2.25], temperature: 62.5, radius: 0.12 },
-  { id: 'loc_12', name: 'T12', anchor: [3.42, 2.25], rayOrigin: [8, 1.05, 2.25], rayDirection: [-1, 0, 0], temperature: 60.7, radius: 0.12 },
-  { id: 'loc_5', name: 'T05', anchor: [-3.42, -1.8], rayOrigin: [-8, 1.05, -1.8], rayDirection: [1, 0, 0], temperature: 55.2, radius: 0.12 },
-  { id: 'loc_6', name: 'T06', anchor: [-1.14, -1.8], temperature: 57.1, radius: 0.12 },
-  { id: 'loc_1', name: 'T01', anchor: [1.14, -1.8], temperature: 58.9, radius: 0.13 },
-  { id: 'loc_7', name: 'T07', anchor: [3.42, -1.8], rayOrigin: [8, 1.05, -1.8], rayDirection: [-1, 0, 0], temperature: 56.5, radius: 0.12 },
-  { id: 'loc_2', name: 'T02', anchor: [-3.42, -5.35], rayOrigin: [-8, 1.05, -5.35], rayDirection: [1, 0, 0], temperature: 53.8, radius: 0.12 },
-  { id: 'loc_3', name: 'T03', anchor: [-1.14, -5.35], temperature: 55.7, radius: 0.12 },
-  { id: 'loc_4', name: 'T04', anchor: [1.14, -5.35], temperature: 59.4, radius: 0.12 },
-  { id: 'loc_8', name: 'T08', anchor: [3.42, -5.35], rayOrigin: [8, 1.05, -5.35], rayDirection: [-1, 0, 0], temperature: 57.6, radius: 0.12 },
-];
+/** Cross-beam Z centers from CAD (pCube2…pCube9), tight → loose = row 1 → row 7. */
+const BEAM_Z_TIGHT_TO_LOOSE = [6.754, 5.537, 4.447, 3.358, 1.387, -0.845, -3.077, -6.581] as const;
 
-const normalizeLocationId = (locationId: string) => locationId.toLowerCase().replace(/^loc_0+/, 'loc_');
+const ROW_CN = ['一', '二', '三', '四', '五', '六', '七'] as const;
+const CN_ROW_INDEX: Record<string, number> = {
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+};
 
-function getMonitorPointForLocation(locationId: string) {
-  const normalizedLocationId = normalizeLocationId(locationId);
-  return SURFACE_MONITOR_POINTS.find((monitorPoint) => normalizeLocationId(monitorPoint.id) === normalizedLocationId);
+/**
+ * Floor–wall junction: project straight down onto the trough floor
+ * just inside the side wall (inner floor edge ≈ ±4.0, floor Y ≈ 0.25).
+ * Left = camera-near (+X); right = far side (−X).
+ */
+const FLOOR_WALL_JUNCTION_X = {
+  左侧: 3.98,
+  右侧: -3.98,
+} as const;
+
+const LOCATION_NAME_PATTERN = /^第([一二三四五六七])排(左侧|右侧)([前后])?$/;
+
+function rowGap(row: number) {
+  const zStart = BEAM_Z_TIGHT_TO_LOOSE[row - 1];
+  const zEnd = BEAM_Z_TIGHT_TO_LOOSE[row];
+  const mid = (zStart + zEnd) / 2;
+  const gap = zStart - zEnd;
+  return { zStart, zEnd, mid, gap };
+}
+
+function junctionAnchor(side: keyof typeof FLOOR_WALL_JUNCTION_X, z: number): Pick<SurfaceMonitorPoint, 'anchor' | 'rayOrigin' | 'rayDirection'> {
+  const x = FLOOR_WALL_JUNCTION_X[side];
+  return {
+    anchor: [x, z],
+    rayOrigin: [x, 18, z],
+    rayDirection: [0, -1, 0],
+  };
+}
+
+function buildSurfaceMonitorPoints(): SurfaceMonitorPoint[] {
+  const points: SurfaceMonitorPoint[] = [];
+
+  for (let row = 1; row <= 7; row += 1) {
+    const cn = ROW_CN[row - 1];
+    const { mid, gap } = rowGap(row);
+
+    if (row === 6) {
+      // Four points evenly in the 6th bay: front toward tight (+Z), rear toward loose (−Z).
+      const frontZ = mid + gap * 0.25;
+      const rearZ = mid - gap * 0.25;
+      (['左侧', '右侧'] as const).forEach((side) => {
+        points.push({
+          locationName: `第${cn}排${side}前`,
+          ...junctionAnchor(side, frontZ),
+          radius: 0.12,
+        });
+        points.push({
+          locationName: `第${cn}排${side}后`,
+          ...junctionAnchor(side, rearZ),
+          radius: 0.12,
+        });
+      });
+      continue;
+    }
+
+    (['左侧', '右侧'] as const).forEach((side) => {
+      points.push({
+        locationName: `第${cn}排${side}`,
+        ...junctionAnchor(side, mid),
+        radius: 0.12,
+      });
+    });
+  }
+
+  return points;
+}
+
+const SURFACE_MONITOR_POINTS = buildSurfaceMonitorPoints();
+
+function parseLocationName(locationName: string) {
+  const match = locationName.trim().match(LOCATION_NAME_PATTERN);
+  if (!match) return null;
+  const row = CN_ROW_INDEX[match[1]];
+  if (!row) return null;
+  return {
+    row,
+    side: match[2] as '左侧' | '右侧',
+    depth: (match[3] as '前' | '后' | undefined) ?? null,
+  };
+}
+
+function getMonitorPointForLocationName(locationName?: string | null) {
+  if (!locationName) return null;
+  const trimmed = locationName.trim();
+  const exact = SURFACE_MONITOR_POINTS.find((monitorPoint) => monitorPoint.locationName === trimmed);
+  if (exact) return exact;
+
+  const parsed = parseLocationName(trimmed);
+  if (!parsed) return null;
+  return SURFACE_MONITOR_POINTS.find((monitorPoint) => {
+    const candidate = parseLocationName(monitorPoint.locationName);
+    return (
+      candidate
+      && candidate.row === parsed.row
+      && candidate.side === parsed.side
+      && candidate.depth === parsed.depth
+    );
+  }) ?? null;
 }
 
 function ModbusTemperatureSurfaceGrid({
@@ -380,10 +456,14 @@ function ModbusTemperatureSurfaceGrid({
   const isRetrying = status === 'retrying';
   const isConnectionIssue = isDisconnected || isRetrying;
   const isAlarm = Boolean(alarm) && !isConnectionIssue;
-  const color = isDisconnected ? modbusStatusColor.error : isRetrying ? modbusStatusColor.retrying : isAlarm ? '#f97316' : modbusStatusColor[status];
-  const activeMonitorPoint = point ? getMonitorPointForLocation(point.locationId) : null;
-  const temperatureByLocation = useMemo(
-    () => new Map(points.map((temperaturePoint) => [normalizeLocationId(temperaturePoint.locationId), temperaturePoint.temperature])),
+  const alarmLocationName = isAlarm ? alarm?.locationName.trim() ?? '' : '';
+  const latestLocationName = point?.locationName.trim() ?? '';
+  // Abnormal highlight must follow the alarm location; otherwise fall back to latest push.
+  const highlightLocationName = alarmLocationName || latestLocationName;
+  const activeMonitorPoint = getMonitorPointForLocationName(highlightLocationName);
+  const alarmColor = '#f97316';
+  const pointByLocationName = useMemo(
+    () => new Map(points.map((temperaturePoint) => [temperaturePoint.locationName.trim(), temperaturePoint])),
     [points]
   );
 
@@ -395,11 +475,8 @@ function ModbusTemperatureSurfaceGrid({
         const marker = markerRefs.current[index];
         if (!marker) return;
 
-        // Top sensors project down; the two outer sensors project horizontally
-        // into the real CAD side walls. Neither relies on a fixed surface height.
-        const origin = monitorPoint.rayOrigin ?? [monitorPoint.anchor[0], 18, monitorPoint.anchor[1]];
-        const direction = monitorPoint.rayDirection ?? [0, -1, 0];
-        raycaster.set(new THREE.Vector3(...origin), new THREE.Vector3(...direction));
+        // Project down onto the floor–wall junction for each beam bay.
+        raycaster.set(new THREE.Vector3(...monitorPoint.rayOrigin), new THREE.Vector3(...monitorPoint.rayDirection));
         const hit = raycaster.intersectObject(model, true).find((intersection) => (intersection.object as THREE.Mesh).isMesh);
         if (!hit) {
           marker.visible = false;
@@ -425,7 +502,7 @@ function ModbusTemperatureSurfaceGrid({
         const projected = marker.getWorldPosition(new THREE.Vector3()).project(camera);
         return {
           marker,
-          active: normalizeLocationId(SURFACE_MONITOR_POINTS[index].id) === activeMonitorPoint?.id,
+          active: SURFACE_MONITOR_POINTS[index].locationName === activeMonitorPoint?.locationName,
           eligible: normal.dot(cameraDirection) > 0.1 && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.1 && Math.abs(projected.y) <= 1.1,
           x: (projected.x * 0.5 + 0.5) * size.width,
           y: (-projected.y * 0.5 + 0.5) * size.height,
@@ -437,7 +514,7 @@ function ModbusTemperatureSurfaceGrid({
 
     const occupied: Array<{ x: number; y: number }> = [];
     candidates.forEach((candidate) => {
-      const hasSpace = occupied.every((position) => Math.hypot(candidate.x - position.x, candidate.y - position.y) >= 128);
+      const hasSpace = occupied.every((position) => Math.hypot(candidate.x - position.x, candidate.y - position.y) >= 150);
       candidate.marker.visible = candidate.eligible && hasSpace;
       if (candidate.marker.visible) occupied.push(candidate);
     });
@@ -446,13 +523,20 @@ function ModbusTemperatureSurfaceGrid({
   return (
     <group>
       {SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
-        const active = activeMonitorPoint?.id === monitorPoint.id;
-        const realTimeTemperature = active && isAlarm && alarm
-          ? alarm.maxTemp
-          : temperatureByLocation.get(normalizeLocationId(monitorPoint.id));
-        const markerColor = active ? color : realTimeTemperature === undefined ? '#64748b' : realTimeTemperature >= 60 ? '#f59e0b' : '#38bdf8';
+        const livePoint = pointByLocationName.get(monitorPoint.locationName);
+        const isAlarmPoint = Boolean(alarmLocationName) && monitorPoint.locationName === alarmLocationName;
+        const isLatestPoint = !alarmLocationName && Boolean(latestLocationName) && monitorPoint.locationName === latestLocationName;
+        const active = activeMonitorPoint?.locationName === monitorPoint.locationName;
+        const realTimeTemperature = livePoint?.temperature;
+        const markerColor = isAlarmPoint
+          ? alarmColor
+          : isLatestPoint
+            ? '#5eead4'
+            : realTimeTemperature === undefined
+              ? '#64748b'
+              : '#34d399';
         return (
-          <group key={monitorPoint.id} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
+          <group key={monitorPoint.locationName} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
             <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 14 : 10}>
               <circleGeometry args={[monitorPoint.radius * 1.7, 32]} />
               <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.26 : 0.15} depthWrite={false} blending={THREE.AdditiveBlending} />
@@ -465,26 +549,25 @@ function ModbusTemperatureSurfaceGrid({
               <circleGeometry args={[active ? 0.055 : 0.032, 20]} />
               <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.92 : 0.62} depthWrite={false} blending={THREE.AdditiveBlending} />
             </mesh>
-            <Html position={[0, 0.04, 0]} center distanceFactor={10.5} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            <Html position={[0, 0.07, 0]} center distanceFactor={12.5} style={{ pointerEvents: 'none', userSelect: 'none' }}>
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: 6,
-                  minWidth: 94,
-                  padding: '5px 8px',
-                  border: `1px solid ${markerColor}bb`,
-                  borderRadius: 6,
-                  background: 'rgba(3, 10, 17, 0.9)',
-                  boxShadow: `0 0 16px ${markerColor}33, inset 0 1px 0 rgba(255,255,255,0.08)`,
+                  minWidth: 52,
+                  padding: '9px 7px',
+                  border: `1.5px solid ${markerColor}cc`,
+                  borderRadius: 7,
+                  background: 'rgba(3, 10, 17, 0.92)',
+                  boxShadow: `0 0 18px ${markerColor}38, inset 0 1px 0 rgba(255,255,255,0.08)`,
                   color: '#f1f7fb',
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   lineHeight: 1,
                   whiteSpace: 'nowrap',
+                  textAlign: 'center',
                 }}
               >
-                <span style={{ color: markerColor, fontSize: 11, fontWeight: 700, letterSpacing: '0.035em' }}>{monitorPoint.name}</span>
-                <strong style={{ fontSize: 13, fontWeight: 750, letterSpacing: '0.01em', textShadow: '0 1px 8px rgba(255,255,255,0.2)' }}>{realTimeTemperature === undefined ? '--' : `${realTimeTemperature.toFixed(1)}°C`}</strong>
+                <strong style={{ color: markerColor, fontSize: 14, fontWeight: 750, letterSpacing: '0.02em', textShadow: '0 1px 8px rgba(255,255,255,0.2)' }}>
+                  {realTimeTemperature === undefined ? '--' : `${realTimeTemperature.toFixed(1)}°C`}
+                </strong>
               </div>
             </Html>
           </group>
@@ -774,7 +857,7 @@ export default function HotMetalTroughSimScene({
 
   return (
     <Canvas
-      camera={{ position: [8.8, 5.4, 8.2], fov: 42, near: 0.1, far: 120 }}
+      camera={{ position: [13.6, 8.6, 12.8], fov: 42, near: 0.1, far: 140 }}
       shadows
       dpr={[1, 1.65]}
       style={{ width: '100%', height: '100%', display: 'block' }}
@@ -787,7 +870,7 @@ export default function HotMetalTroughSimScene({
       }}
     >
       <color attach="background" args={['#040911']} />
-      <fog attach="fog" args={['#040911', 12, 34]} />
+      <fog attach="fog" args={['#040911', 18, 48]} />
 
       <ambientLight intensity={0.84} color="#dbeafe" />
       <hemisphereLight args={['#b8dff5', '#0b1822', 0.3]} />

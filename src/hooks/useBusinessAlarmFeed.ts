@@ -33,7 +33,7 @@ const DOCUMENTED_HIGH_TEMP_ALARM: RawBusinessAlarm = {
   minTemp: 26.3,
   maxTemp: 73.1,
   thresholdTemp: 50.0,
-  locationName: '位置1',
+  locationName: '第六排左侧后',
   isRead: 0,
   processor: null,
   processContent: null,
