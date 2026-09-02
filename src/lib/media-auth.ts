@@ -60,7 +60,7 @@ const fetchAccessToken = async () => {
   return extractAccessToken(payload);
 };
 
-/** Shared media access_token for ZLMediaKit play signaling (Authorization: Bearer …). */
+/** Shared media access_token from A service (/device/getToken). */
 export const getMediaAccessToken = async (options?: {
   forceRefresh?: boolean;
 }) => {
@@ -89,4 +89,27 @@ export const invalidateMediaAccessToken = () => {
   cachedToken = null;
 };
 
-export const buildMediaAuthorizationHeader = (token: string) => `Bearer ${token}`;
+/**
+ * WIS3000/ZLMediaKit play URL auth: append token in query as `&Bearer <token>`
+ * (not Authorization header — that triggers CORS preflight rejection).
+ * Example:
+ * .../webrtc?app=rtp&stream=xxx&type=play&vcodec=h264&Bearer <token>
+ */
+export const buildAuthenticatedStreamUrl = (streamUrl: string, token: string) => {
+  const trimmedToken = token.trim();
+  if (!trimmedToken) return streamUrl;
+
+  const url = new URL(streamUrl);
+  if (!url.searchParams.get('vcodec')) {
+    url.searchParams.set('vcodec', 'h264');
+  }
+
+  // Drop any previous Bearer query fragment before re-appending.
+  const withoutBearer = url.toString()
+    .replace(/([?&])Bearer(?:[+%20 ]|=)[^&]*/gi, '$1')
+    .replace(/[?&]$/, '')
+    .replace(/\?&/, '?');
+
+  const separator = withoutBearer.includes('?') ? '&' : '?';
+  return `${withoutBearer}${separator}Bearer ${trimmedToken}`;
+};

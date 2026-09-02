@@ -4,7 +4,7 @@ import { AlertTriangle, LoaderCircle, Play, RotateCw, VideoOff } from 'lucide-re
 import { useEffect, useRef, useState } from 'react';
 import { isMockOnly } from '@/lib/api-config';
 import {
-  buildMediaAuthorizationHeader,
+  buildAuthenticatedStreamUrl,
   getMediaAccessToken,
   invalidateMediaAccessToken,
 } from '@/lib/media-auth';
@@ -55,7 +55,7 @@ const localizeMediaError = (rawMessage: string, code?: number) => {
   const lower = message.toLowerCase();
 
   if (lower.includes('auth failed') || code === 1) {
-    return '媒体鉴权失败，请确认已携带 Authorization Bearer token';
+    return '媒体鉴权失败，请确认播流地址已拼接 Bearer token';
   }
   if (lower.includes('not found') || lower.includes('no such stream') || (code === -400 && lower.includes('stream'))) {
     return '媒体流不存在或未推流';
@@ -97,12 +97,11 @@ const getAnswerSdp = (body: string) => {
   throw new Error('媒体应答中缺少视频描述');
 };
 
-const postPlayOffer = async (streamUrl: string, sdp: string, token: string, signal?: AbortSignal) => {
-  const response = await fetch(streamUrl, {
+const postPlayOffer = async (playUrl: string, sdp: string, signal?: AbortSignal) => {
+  const response = await fetch(playUrl, {
     method: 'POST',
     headers: {
       Accept: 'application/sdp, text/plain, application/json',
-      Authorization: buildMediaAuthorizationHeader(token),
       'Content-Type': 'text/plain;charset=UTF-8',
     },
     body: sdp,
@@ -193,13 +192,21 @@ export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }
 
         let answerSdp: string;
         try {
-          answerSdp = await postPlayOffer(streamUrl, localSdp, token, controller.signal);
+          answerSdp = await postPlayOffer(
+            buildAuthenticatedStreamUrl(streamUrl, token),
+            localSdp,
+            controller.signal,
+          );
         } catch (error) {
           if (!(error instanceof MediaAuthError) || disposed) throw error;
           invalidateMediaAccessToken();
           token = await getMediaAccessToken({ forceRefresh: true });
           if (disposed) return;
-          answerSdp = await postPlayOffer(streamUrl, localSdp, token, controller.signal);
+          answerSdp = await postPlayOffer(
+            buildAuthenticatedStreamUrl(streamUrl, token),
+            localSdp,
+            controller.signal,
+          );
         }
 
         if (disposed) return;
