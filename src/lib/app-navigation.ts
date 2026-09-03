@@ -27,6 +27,16 @@ function isDeviceType(value: string | null): value is DeviceType {
   return !!value && DEVICE_TYPES.includes(value as DeviceType);
 }
 
+/** 钢包产品版业务一级菜单路由。 */
+export function createLadleProductRoute(nav: LadleNavId = defaultLadleNav): AppRouteState {
+  return {
+    nav,
+    deviceType: 'ladle-recognition',
+    ladlePanelMode: 'selector',
+    ladleShellActive: true,
+  };
+}
+
 export function createDefaultAppRoute(): AppRouteState {
   return {
     nav: 'dashboard',

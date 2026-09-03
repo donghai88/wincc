@@ -5,8 +5,8 @@ import type { DeviceType } from '@/types/template';
  * 未设置时保留完整的集成平台；设置后只呈现指定业务模块。
  *
  * - npm run dev                     → 集成平台（铁水沟 + 钢包识别）
- * - npm run dev:trough              → 仅铁水沟
- * - npm run dev:ladle-recognition   → 仅钢包识别
+ * - npm run dev:trough              → 仅铁水沟（平台一级菜单）
+ * - npm run dev:ladle-recognition   → 仅钢包识别（监控总览共用进入层级 + 钢包业务一级菜单）
  */
 export type ProductMode = 'trough' | 'ladle-recognition';
 

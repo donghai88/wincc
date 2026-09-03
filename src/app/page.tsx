@@ -25,7 +25,7 @@ import {
   type AppRouteState,
   type LadlePanelMode,
 } from '@/lib/app-navigation';
-import { isTroughProductMode, overviewDeviceTypes } from '@/lib/product-mode';
+import { isLadleProductMode, isTroughProductMode, overviewDeviceTypes } from '@/lib/product-mode';
 import { LogOut, User } from 'lucide-react';
 
 const AlarmCenter = dynamic(() => import('@/components/AlarmCenter'), { ssr: false });
@@ -76,7 +76,7 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [routeReady, setRouteReady] = useState(false);
   const troughUnreadAlarmCount = useUnreadAlarmCount();
-  const ladleUnreadAlarmCount = useLadleUnreadAlarmCount(ladleShellActive);
+  const ladleUnreadAlarmCount = useLadleUnreadAlarmCount(ladleShellActive || isLadleProductMode);
 
   const syncFromRoute = useCallback((route: AppRouteState) => {
     applyRouteToState(route, {
@@ -139,7 +139,9 @@ export default function Home() {
     );
   }
 
+  // 钢包产品版业务菜单为一级；监控总览进入层级与铁水沟共用
   const isLadleShell = ladleShellActive;
+  const useLadleProductSidebar = isLadleProductMode;
   const isHotMetalTrough = selectedDeviceType === 'hot-metal-trough';
   const isHotMetalTroughSim = selectedDeviceType === 'hot-metal-trough-sim';
   const isLadleRecognition = selectedDeviceType === 'ladle-recognition';
@@ -147,7 +149,7 @@ export default function Home() {
   const isReportView = !isLadleShell && activeNav === 'reports';
   const deviceConfig = selectedWinCC ? getDeviceTypeConfig(selectedWinCC.deviceType) : null;
   const effectiveSidebarCollapsed = sidebarCollapsed || isNarrowViewport;
-  const unreadAlarmCount = isLadleShell ? ladleUnreadAlarmCount : troughUnreadAlarmCount;
+  const unreadAlarmCount = (isLadleShell || useLadleProductSidebar) ? ladleUnreadAlarmCount : troughUnreadAlarmCount;
 
   const handleSelectDeviceType = (deviceType: DeviceType) => {
     navigateTo({
@@ -359,11 +361,16 @@ export default function Home() {
         background: 'var(--void)',
       }}
     >
-      {isLadleShell ? (
+      {useLadleProductSidebar || isLadleShell ? (
         <LadleSidebar
-          activeNav={isLadleNavId(activeNav) ? activeNav : defaultLadleNav}
+          activeNav={
+            isLadleNavId(activeNav)
+              ? activeNav
+              : (useLadleProductSidebar ? 'dashboard' : defaultLadleNav)
+          }
           onNavChange={handleLadleNavChange}
-          onBackToModeSelector={handleBackToLadleModeSelector}
+          includeOverview={useLadleProductSidebar}
+          onOverviewClick={useLadleProductSidebar ? handleBackToOverview : undefined}
           unreadAlarmCount={unreadAlarmCount}
           collapsed={effectiveSidebarCollapsed}
           onToggleCollapse={isNarrowViewport ? undefined : () => setSidebarCollapsed(!sidebarCollapsed)}

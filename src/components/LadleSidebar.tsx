@@ -3,15 +3,21 @@
 import {
   Activity,
   ArrowLeft,
+  Flame,
+  LayoutDashboard,
   PanelLeft,
   PanelLeftClose,
-  ScanText,
 } from 'lucide-react';
 import { ladleNavItems, type LadleNavId } from '@/lib/ladle-navigation';
 
+export type LadleSidebarNavId = LadleNavId | 'dashboard';
+
 interface LadleSidebarProps {
-  activeNav: LadleNavId;
+  activeNav: LadleSidebarNavId;
   onNavChange: (navId: LadleNavId) => void;
+  /** 钢包产品版：展示与铁水沟共用的「监控总览」一级入口 */
+  includeOverview?: boolean;
+  onOverviewClick?: () => void;
   onBackToModeSelector?: () => void;
   unreadAlarmCount?: number | null;
   collapsed?: boolean;
@@ -21,11 +27,15 @@ interface LadleSidebarProps {
 export default function LadleSidebar({
   activeNav,
   onNavChange,
+  includeOverview = false,
+  onOverviewClick,
   onBackToModeSelector,
   unreadAlarmCount = null,
   collapsed = false,
   onToggleCollapse,
 }: LadleSidebarProps) {
+  const overviewActive = activeNav === 'dashboard';
+
   return (
     <aside
       style={{
@@ -55,22 +65,22 @@ export default function LadleSidebar({
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: 'linear-gradient(135deg, #0a84ff, #22d3ee)',
+              background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            <ScanText size={16} color="#fff" />
+            <Flame size={16} color="#fff" />
           </div>
           {!collapsed && (
             <div>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                钢包智能监测
+                监控集成平台
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                红外测温 · OCR · 雷达
+                钢铁冶金监控系统
               </div>
             </div>
           )}
@@ -145,6 +155,66 @@ export default function LadleSidebar({
             )}
           </button>
         )}
+
+        {includeOverview && (
+          <button
+            type="button"
+            onClick={onOverviewClick}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: collapsed ? '12px 0' : '10px 12px',
+              marginBottom: 4,
+              background: overviewActive ? 'var(--surface-hover)' : 'transparent',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              position: 'relative',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+            title={collapsed ? '监控总览' : undefined}
+          >
+            {overviewActive && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: collapsed ? '50%' : 0,
+                  transform: collapsed ? 'translateX(-50%)' : 'none',
+                  bottom: collapsed ? 0 : 'auto',
+                  top: collapsed ? 'auto' : '50%',
+                  marginTop: collapsed ? 0 : -10,
+                  width: collapsed ? 20 : 3,
+                  height: collapsed ? 3 : 20,
+                  background: '#0a84ff',
+                  borderRadius: collapsed ? '2px 2px 0 0' : '0 2px 2px 0',
+                }}
+              />
+            )}
+            <LayoutDashboard
+              size={18}
+              style={{
+                color: overviewActive ? '#0a84ff' : 'var(--text-muted)',
+                flexShrink: 0,
+              }}
+            />
+            {!collapsed && (
+              <span
+                style={{
+                  flex: 1,
+                  textAlign: 'left',
+                  fontSize: 13,
+                  color: overviewActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: overviewActive ? 500 : 400,
+                }}
+              >
+                监控总览
+              </span>
+            )}
+          </button>
+        )}
+
         {ladleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeNav === item.id;

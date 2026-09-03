@@ -2,12 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
   ArrowLeft,
-  BadgeCheck,
   Camera,
   Clock3,
-  Radar,
   ScanText,
   Thermometer,
 } from 'lucide-react';
@@ -47,14 +44,6 @@ interface ThermalFeed {
   avg: number;
   min: number;
   pkg: string;
-}
-
-interface SnapshotItem {
-  id: string;
-  pkg: string;
-  time: string;
-  temp: number;
-  camera: string;
 }
 
 const devices: DeviceCard[] = [
@@ -128,19 +117,6 @@ const initialFeeds: ThermalFeed[] = [
   { id: 'IR-03', title: 'IR-03 热修位', temp: 442, max: 442, avg: 415, min: 372, pkg: 'A3256' },
 ];
 
-const snapshots: SnapshotItem[] = [
-  { id: 's1', pkg: 'A3255', time: '2026-06-26 11:38:42', temp: 479, camera: 'IR-01' },
-  { id: 's2', pkg: 'A3255', time: '2026-06-26 11:38:42', temp: 458, camera: 'IR-02' },
-  { id: 's3', pkg: 'A3255', time: '2026-06-26 11:38:42', temp: 435, camera: 'IR-03' },
-];
-
-const ocrRecords = [
-  { time: '14:28:36', id: 'A3256', confidence: '99.6%', result: '识别成功', tone: 'normal' as const },
-  { time: '14:17:08', id: 'A3255', confidence: '98.9%', result: '识别成功', tone: 'normal' as const },
-  { time: '13:54:21', id: 'A3241', confidence: '99.1%', result: '关注渣线', tone: 'warning' as const },
-  { time: '13:38:44', id: 'A3238', confidence: '97.8%', result: '识别成功', tone: 'normal' as const },
-];
-
 function ThermalCameraCard({ feed }: { feed: ThermalFeed }) {
   return (
     <section className={styles.panel}>
@@ -205,10 +181,6 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
     temp: feed.temp,
     camera: feed.id,
   })));
-  const [selectedRecord, setSelectedRecord] = useState(ocrRecords[0]);
-  const [selectedPkg, setSelectedPkg] = useState('Y-111');
-  const [scanProgress, setScanProgress] = useState(0);
-  const [scanning, setScanning] = useState(false);
   const [reconnectMessage, setReconnectMessage] = useState('');
 
   useEffect(() => {
@@ -306,21 +278,7 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
     }
   };
 
-  useEffect(() => {
-    if (!scanning) return;
-    const timer = setInterval(() => {
-      setScanProgress((p) => {
-        if (p >= 100) {
-          setScanning(false);
-          return 100;
-        }
-        return p + 4;
-      });
-    }, 120);
-    return () => clearInterval(timer);
-  }, [scanning]);
-
-  const currentPkg = modbusFeed.payload?.currentLadleNo ?? selectedRecord.id;
+  const currentPkg = modbusFeed.payload?.currentLadleNo ?? latestRecords[0]?.pkg ?? 'Y-111';
   const title = wincc?.name ?? '钢包识别';
   const subtitle = wincc
     ? `${wincc.location} / OCR+红外+雷达三模态协同 / ${modbusFeed.status === 'mock' || modbusFeed.status === 'fallback' ? 'Mock 数据' : '实时接口'}`
@@ -466,150 +424,6 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
             ))}
           </div>
         </section>
-
-        <div className={styles.bottomGrid}>
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <div>
-                <div className={styles.sectionLabel} style={{ marginBottom: 4 }}>
-                  <Radar size={13} color="#22d3ee" />
-                  SLAGLINE SCAN · 渣线检测
-                </div>
-                <div className={styles.muted}>设备：RH-LR1540 × 2 | 精度：±10mm | 点云密度：约120万点</div>
-              </div>
-              <div className={styles.pkgTabs}>
-                {['A3256', 'A3241', 'A3198', 'A3302'].map((pkg) => (
-                  <button
-                    key={pkg}
-                    type="button"
-                    className={selectedPkg === pkg ? styles.active : undefined}
-                    onClick={() => setSelectedPkg(pkg)}
-                  >
-                    {pkg}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.scanActions}>
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                onClick={() => {
-                  setScanProgress(0);
-                  setScanning(true);
-                }}
-                disabled={scanning}
-              >
-                {scanning ? '扫描中...' : '🔍 开始新检测'}
-              </button>
-              <div className={styles.scanProgress}>
-                <div className={styles.scanTrack}>
-                  <i style={{ width: `${scanProgress}%` }} />
-                </div>
-                <span>
-                  {scanning ? `准备扫描... ${scanProgress}%` : scanProgress === 100 ? '检测完成' : '待命'}
-                </span>
-              </div>
-            </div>
-
-            <div className={styles.pointCloud}>
-              <div className={styles.ring} />
-              <div className={`${styles.ring} ${styles.ringAlt}`} />
-              <div className={styles.core} />
-              {Array.from({ length: 64 }, (_, index) => (
-                <i key={index} style={{ '--i': index } as React.CSSProperties} />
-              ))}
-              <div className={styles.legend}>
-                <span className={styles.safe}>■安全</span>
-                <span className={styles.warn}>■预警</span>
-                <span className={styles.danger}>■危险</span>
-              </div>
-            </div>
-
-            <div className={styles.depthChart}>
-              <div className={styles.chartLabel}>
-                <span>渣线深度分布曲线 — 环绕钢包一周 · {selectedPkg}</span>
-                <span>0° — 360°</span>
-              </div>
-              <svg viewBox="0 0 600 100" preserveAspectRatio="none" aria-label="渣线深度分布图">
-                <defs>
-                  <linearGradient id="ladleDepthFill" x1="0" x2="0" y1="0" y2="1">
-                    <stop stopColor="#22d3ee" stopOpacity=".32" />
-                    <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0 72 L28 60 L54 66 L82 49 L110 56 L138 40 L166 47 L195 29 L223 38 L250 31 L280 48 L310 45 L338 58 L367 52 L394 69 L422 56 L450 63 L480 50 L510 61 L540 44 L570 53 L600 39 L600 100 L0 100Z"
-                  fill="url(#ladleDepthFill)"
-                />
-                <path
-                  d="M0 72 L28 60 L54 66 L82 49 L110 56 L138 40 L166 47 L195 29 L223 38 L250 31 L280 48 L310 45 L338 58 L367 52 L394 69 L422 56 L450 63 L480 50 L510 61 L540 44 L570 53 L600 39"
-                  fill="none"
-                  stroke="#22d3ee"
-                  strokeWidth="2"
-                />
-              </svg>
-            </div>
-          </section>
-
-          <div className={styles.sideStack}>
-            <section className={styles.panel}>
-              <div className={styles.sectionLabel}>
-                <Clock3 size={13} color="#22d3ee" />
-                OCR HISTORY · 最近识别记录
-              </div>
-              <div className={styles.muted}>OCR识别结果已自动关联检测档案</div>
-              <div className={styles.records}>
-                {ocrRecords.map((record) => (
-                  <button
-                    type="button"
-                    key={record.time}
-                    className={`${styles.recordBtn}${selectedRecord.time === record.time ? ` ${styles.selected}` : ''}`}
-                    onClick={() => {
-                      setSelectedRecord(record);
-                      setSelectedPkg(record.id);
-                    }}
-                  >
-                    <time>{record.time}</time>
-                    <b>{record.id}</b>
-                    <span>{record.confidence}</span>
-                    <em className={record.tone === 'warning' ? styles.warn : undefined}>{record.result}</em>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className={styles.panel}>
-              <div className={styles.sectionLabel}>
-                <BadgeCheck size={13} color="#34d399" />
-                SUMMARY · 检测结论摘要
-              </div>
-              <div className={styles.summaryList}>
-                <div>
-                  <span>渣线最大深度</span>
-                  <b>18.4 mm</b>
-                </div>
-                <div>
-                  <span>缺陷数量</span>
-                  <b>1</b>
-                </div>
-                <div>
-                  <span>评级</span>
-                  <b className={styles.warn}>预警</b>
-                </div>
-                <div>
-                  <span>设备在线率</span>
-                  <b className={styles.ok}>100%</b>
-                </div>
-              </div>
-              <div className={styles.summaryNote}>
-                <Activity size={14} color="#22d3ee" />
-                红外测温、雷达渣线、OCR包号三模态协同运行
-              </div>
-            </section>
-          </div>
-        </div>
       </div>
     </section>
   );

@@ -12,7 +12,6 @@ interface LadleMonitoringModeSelectorProps {
 }
 
 export default function LadleMonitoringModeSelector({
-  wincc,
   onBack,
   onSelectThermal,
 }: LadleMonitoringModeSelectorProps) {
@@ -26,7 +25,6 @@ export default function LadleMonitoringModeSelector({
           </button>
           <div className={styles.titleBlock}>
             <h2>钢包识别</h2>
-            <span>{wincc.location} · 功能选择</span>
           </div>
           <span className={styles.status}><i /> 系统运行中</span>
         </div>

@@ -80,11 +80,13 @@ try {
     }));
   });
 
-  // 1) 进入钢包产品壳
+  // 1) 钢包产品版：监控总览共用进入层级，一级菜单可直达业务
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-  await page.getByText('钢包智能监测').first().waitFor({ timeout: timeoutMs });
+  await page.getByText('监控集成平台').first().waitFor({ timeout: timeoutMs });
+  await page.getByRole('button', { name: '监控总览', exact: true }).waitFor({ timeout: timeoutMs });
+  await page.getByRole('button', { name: '实时监控', exact: true }).click();
   await page.getByRole('button', { name: '实时监控', exact: true }).waitFor({ timeout: timeoutMs });
-  record('页面登录与钢包侧栏', 'passed', baseUrl);
+  record('页面登录与钢包侧栏', 'passed', `${baseUrl} → 实时监控`);
 
   // 2) 实时监控
   await openNav(page, '实时监控', '钢包智能监测实时监控');
