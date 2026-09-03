@@ -90,17 +90,18 @@ export const invalidateMediaAccessToken = () => {
 };
 
 /**
- * WIS3000/ZLMediaKit play URL auth: append token in query as `&Bearer <token>`
+ * WIS3000 play URL auth: append token in query as `Bearer <token>`
  * (not Authorization header — that triggers CORS preflight rejection).
- * Example:
- * .../webrtc?app=rtp&stream=xxx&type=play&vcodec=h264&Bearer <token>
+ *
+ * webrtc: .../webrtc?...&vcodec=h264&Bearer <token>
+ * flv:    .../xxx.live.flv?Bearer <token>
  */
 export const buildAuthenticatedStreamUrl = (streamUrl: string, token: string) => {
   const trimmedToken = token.trim();
   if (!trimmedToken) return streamUrl;
 
   const url = new URL(streamUrl);
-  if (!url.searchParams.get('vcodec')) {
+  if (url.pathname.toLowerCase().includes('/webrtc') && !url.searchParams.get('vcodec')) {
     url.searchParams.set('vcodec', 'h264');
   }
 

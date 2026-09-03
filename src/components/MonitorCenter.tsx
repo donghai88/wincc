@@ -12,7 +12,7 @@ import {
   Clock,
   Power,
 } from 'lucide-react';
-import ZlMediaKitWebRtcPlayer from '@/components/ZlMediaKitWebRtcPlayer';
+import ZlMediaKitFlvPlayer from '@/components/ZlMediaKitFlvPlayer';
 
 type ThermalCameraFeedStatus = 'online' | 'standby';
 type ApiStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
@@ -100,9 +100,9 @@ const extractStreamId = (record: Record<string, unknown>) => {
   return match?.[1] ?? '';
 };
 
-/** Prefer ZLMediaKit webrtc play URL; fall back to pavUrl (智能帧) when provided. */
-const pickPlayableStreamUrl = (record: Record<string, unknown>) => (
-  readString(record, 'webrtc') || readString(record, 'pavUrl')
+/** Prefer HTTP-FLV / WS-FLV for browser playback (avoids WebRTC ICE/UDP). */
+const hasPlayableHttpStream = (record: Record<string, unknown>) => (
+  Boolean(readString(record, 'flv') || readString(record, 'wsFlv') || readString(record, 'webrtc') || readString(record, 'pavUrl'))
 );
 
 const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
@@ -118,7 +118,7 @@ const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
       : {};
     const streamId = extractStreamId(record);
     const deviceId = readString(record, 'deviceId') || readString(record, 'deviceID');
-    const webrtc = pickPlayableStreamUrl(record);
+    const webrtc = readString(record, 'webrtc');
     const flv = readString(record, 'flv');
     const wsFlv = readString(record, 'wsFlv');
     const pavUrl = readString(record, 'pavUrl');
@@ -126,7 +126,7 @@ const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
     const rtsp = readString(record, 'rtsp');
     // Live list must carry real play URLs from /device/live (wrapped play fields).
     // Do not invent LAN hosts from streamId — that breaks test/prod environments.
-    const isConfigured = Boolean(webrtc || flv || streamId || deviceId);
+    const isConfigured = Boolean(hasPlayableHttpStream(record) || streamId || deviceId);
 
     return {
       slot: index + 1,
@@ -161,7 +161,7 @@ function renderThermalCameraCard(
         ? 'rgba(255, 255, 255, 0.46)'
         : 'var(--text-muted)';
     const statusText = isLive ? '在线' : isStandby ? '待接入' : '已停用';
-    const streamStateText = camera.webrtc ? '已配置' : '未配置';
+    const streamStateText = (camera.flv || camera.wsFlv) ? '已配置' : '未配置';
     const switchLabel = `${isEnabled ? '关闭' : '开启'}热成像 ${camera.displayName}`;
 
     return (
@@ -308,9 +308,10 @@ function renderThermalCameraCard(
             overflow: 'hidden',
           }}
         >
-          <ZlMediaKitWebRtcPlayer
+          <ZlMediaKitFlvPlayer
             active={isLive}
-            streamUrl={camera.webrtc}
+            flvUrl={camera.flv}
+            wsFlvUrl={camera.wsFlv}
             streamName={`热成像 ${camera.displayName}`}
           />
 
