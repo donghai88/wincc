@@ -352,6 +352,9 @@ export default function Home() {
     ? (activeNav === 'ladle-monitor' ? 0 : (isNarrowViewport ? 12 : 20))
     : (isImmersiveTwin ? 0 : isNarrowViewport ? 12 : isReportView ? 16 : 20);
 
+  // 实时监控页自带沉浸式顶栏，隐藏平台全局 header，避免双顶栏样式错乱
+  const hideAppChrome = isLadleShell && activeNav === 'ladle-monitor';
+
   return (
     <div
       style={{
@@ -395,6 +398,7 @@ export default function Home() {
           overflow: 'hidden',
         }}
       >
+        {!hideAppChrome && (
         <header
           style={{
             height: 56,
@@ -480,6 +484,7 @@ export default function Home() {
             </div>
           </div>
         </header>
+        )}
 
         <div
           style={{

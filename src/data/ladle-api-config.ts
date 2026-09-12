@@ -30,8 +30,8 @@ const createSuccess = <T,>(data: T, msg = '操作成功'): LadleApiResponse<T> =
   data,
 });
 
-const THERMAL_DEVICE_IDS = ['11_1', '12_1', '17_1'] as const;
-const THERMAL_DEVICE_NAMES = ['1-1', '2-1', '3-1'] as const;
+const THERMAL_DEVICE_IDS = ['南1_1', '南2_1', '北1_1', '北2_1'] as const;
+const THERMAL_DEVICE_NAMES = ['南1_1', '南2_1', '北1_1', '北2_1'] as const;
 
 /** Keep mock rows inside the UI's default recent windows (24h / 7d). */
 const hoursAgo = (hours: number, minuteOffset = 0) => {
@@ -258,22 +258,15 @@ export function getCurrentDayInferenceCount(): LadleApiResponse<number> {
 export function createMockModbusPayload(tick = modbusTick): LadleModbusPayload {
   modbusTick = tick + 1;
   const hasLadle = tick % 7 !== 0;
-  const wave = Math.sin(tick * 0.45);
 
-  const tempResults: LadleTempResult[] = THERMAL_DEVICE_IDS.map((deviceId, index) => {
-    if (tick % 11 === 0 && index === 2) {
-      return { deviceId, maxTemp: null, minTemp: null, avgTemp: null, success: false };
-    }
-
-    const base = 280 + index * 10 + wave * 8;
-    return {
-      deviceId,
-      maxTemp: Number((base + 12).toFixed(2)),
-      minTemp: Number((base - 18).toFixed(2)),
-      avgTemp: Number(base.toFixed(2)),
-      success: true,
-    };
-  });
+  // 本地预览离线态：四路均返回哨兵负温，便于验证「离线 + 重连按钮」
+  const tempResults: LadleTempResult[] = THERMAL_DEVICE_IDS.map((deviceId) => ({
+    deviceId,
+    maxTemp: -273.2,
+    minTemp: -273.2,
+    avgTemp: -273.2,
+    success: true,
+  }));
 
   return {
     currentLadleNo: hasLadle ? 'Y-111' : null,
@@ -282,8 +275,8 @@ export function createMockModbusPayload(tick = modbusTick): LadleModbusPayload {
 }
 
 export function reconnectModbusDevice(deviceId: string): LadleApiResponse<null> {
-  if (!THERMAL_DEVICE_IDS.includes(deviceId as typeof THERMAL_DEVICE_IDS[number])) {
-    return { msg: `设备 ${deviceId} 重连失败，请检查网络或设备电源`, code: 500, data: null };
+  if (!deviceId.trim()) {
+    return { msg: '设备 ID 无效，无法重连', code: 500, data: null };
   }
   return createSuccess(null);
 }
@@ -501,9 +494,17 @@ export function buildLadleListPath(query: LadleListQuery) {
 }
 
 export const ladleThermalDeviceLabels: Record<string, string> = {
-  '11_1': 'IR-01 出钢位',
-  '12_1': 'IR-02 浇铸位',
-  '17_1': 'IR-03 热修位',
+  '南1_1': 'HHW-TN460D-ACS',
+  '南2_1': 'HHW-TN460D-ACS',
+  '北1_1': 'HHW-TN460D-ACS',
+  '北2_1': 'HHW-TN460D-ACS',
+  'TN460-125': 'HHW-TN460D-ACS',
+  'TN460-126': 'HHW-TN460D-ACS',
+  'TN460-127': 'HHW-TN460D-ACS',
+  'TN460-128': 'HHW-TN460D-ACS',
+  '11_1': 'HHW-TN460D-ACS',
+  '12_1': 'HHW-TN460D-ACS',
+  '17_1': 'HHW-TN460D-ACS',
 };
 
 export const ladleDeviceNameOptions = [...THERMAL_DEVICE_NAMES];

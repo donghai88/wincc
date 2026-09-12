@@ -17,6 +17,15 @@ const readTokenCandidate = (value: unknown): string => {
   return '';
 };
 
+/** Reject status text like「成功」when APIs put JWT/opaque token in msg. */
+const looksLikeAccessToken = (value: string) => {
+  if (value.length < 16) return false;
+  if (/[\u4e00-\u9fff\s]/.test(value)) return false;
+  const lower = value.toLowerCase();
+  if (['ok', 'success', 'true', 'false', 'null', 'undefined'].includes(lower)) return false;
+  return /^[A-Za-z0-9._\-+=/~]+$/.test(value);
+};
+
 const extractAccessToken = (payload: unknown): string => {
   if (typeof payload !== 'object' || payload === null) {
     throw new Error('媒体鉴权接口返回结构异常');
@@ -32,12 +41,20 @@ const extractAccessToken = (payload: unknown): string => {
     ? record.data as Record<string, unknown>
     : null;
 
-  const token = readTokenCandidate(record.msg)
-    || readTokenCandidate(record.access_token)
-    || readTokenCandidate(record.token)
-    || readTokenCandidate(nested?.access_token)
-    || readTokenCandidate(nested?.token)
-    || readTokenCandidate(nested?.msg);
+  // Prefer explicit token fields. Only treat msg as token when it looks like one
+  // (some backends return JWT in msg; others put「成功」there).
+  const candidates = [
+    readTokenCandidate(nested?.access_token),
+    readTokenCandidate(nested?.token),
+    readTokenCandidate(record.access_token),
+    readTokenCandidate(record.token),
+    readTokenCandidate(nested?.msg),
+    readTokenCandidate(record.msg),
+  ];
+
+  const token = candidates.find((item) => looksLikeAccessToken(item))
+    || candidates.find((item) => item.length > 0 && !/[\u4e00-\u9fff]/.test(item) && item.length >= 16)
+    || '';
 
   if (!token) {
     throw new Error('媒体鉴权接口未返回 access_token');
@@ -95,6 +112,8 @@ export const invalidateMediaAccessToken = () => {
  *
  * webrtc: .../webrtc?...&vcodec=h264&Bearer <token>
  * flv:    .../xxx.live.flv?Bearer <token>
+ *
+ * Space is encoded as %20 so fetch/mpegts/Node http.request accept the URL.
  */
 export const buildAuthenticatedStreamUrl = (streamUrl: string, token: string) => {
   const trimmedToken = token.trim();
@@ -112,5 +131,5 @@ export const buildAuthenticatedStreamUrl = (streamUrl: string, token: string) =>
     .replace(/\?&/, '?');
 
   const separator = withoutBearer.includes('?') ? '&' : '?';
-  return `${withoutBearer}${separator}Bearer ${trimmedToken}`;
+  return `${withoutBearer}${separator}Bearer%20${encodeURIComponent(trimmedToken)}`;
 };

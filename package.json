@@ -2,6 +2,12 @@
   "name": "wincc1",
   "version": "0.1.0",
   "private": true,
+  "browserslist": [
+    "chrome >= 80",
+    "edge >= 80",
+    "firefox >= 78",
+    "safari >= 13"
+  ],
   "scripts": {
     "predev": "node scripts/ensure-tailwind-resolve.mjs",
     "dev": "node scripts/dev-with-warmup.mjs",
@@ -11,12 +17,14 @@
     "prebuild": "node scripts/ensure-tailwind-resolve.mjs",
     "build": "next build",
     "build:trough": "NEXT_PUBLIC_PRODUCT_MODE=trough next build",
-    "build:trough:local-backend": "NEXT_PUBLIC_PRODUCT_MODE=trough NEXT_PUBLIC_API_MOCK_MODE=off NEXT_PUBLIC_API_BASE_URL=/api NEXT_PUBLIC_WS_BASE_URL= next build",
-    "build:ladle-recognition": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition next build",
+    "build:trough:local-backend": "NEXT_PUBLIC_PRODUCT_MODE=trough NEXT_PUBLIC_API_MOCK_MODE=off NEXT_PUBLIC_API_BASE_URL=/api NEXT_PUBLIC_WS_BASE_URL= next build --webpack",
+    "build:ladle-recognition": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition next build --webpack",
+    "build:ladle-recognition:local-backend": "NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition NEXT_PUBLIC_API_MOCK_MODE=off NEXT_PUBLIC_API_BASE_URL=/api NEXT_PUBLIC_WS_BASE_URL= next build --webpack && node scripts/write-standalone-login.mjs",
     "docker:build": "npm run build && docker build -t wincc:latest .",
     "docker:build:trough": "npm run build:trough && docker build -t wincc:trough .",
     "docker:build:trough:local-backend": "npm run build:trough:local-backend && docker build -t wincc:trough-local-backend .",
     "docker:build:ladle-recognition": "npm run build:ladle-recognition && docker build -t wincc:ladle-recognition .",
+    "docker:build:ladle-recognition:local-backend": "npm run build:ladle-recognition:local-backend && docker build -t wincc:ladle-recognition-local-backend .",
     "docker:run": "docker run --rm -p 3001:8080 wincc:latest",
     "start": "node scripts/serve-static.mjs",
     "test:e2e:api": "node scripts/e2e-api-smoke.mjs",
@@ -38,7 +46,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -46,6 +55,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.184.1",
+    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "playwright": "^1.62.1",

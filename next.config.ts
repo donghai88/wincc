@@ -9,6 +9,13 @@ const isProdBuild = process.env.NODE_ENV === "production";
 const nextConfig: NextConfig = {
   // 静态导出仅用于生产构建；开发态关闭可减少不必要的导出约束开销。
   ...(isProdBuild ? { output: "export" as const } : {}),
+  // three 等依赖会带 static {} 等新语法，工控机旧 Edge/Chrome 需再编译一遍
+  transpilePackages: [
+    "three",
+    "@react-three/fiber",
+    "@react-three/drei",
+    "@react-three/postprocessing",
+  ],
   // 防止上级目录中的 lockfile 被错误识别为工作区根目录，缩小 Turbopack 的文件解析与监听范围。
   turbopack: {
     root: projectRoot,

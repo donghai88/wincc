@@ -164,12 +164,9 @@ export function useLadleModbusFeed(): LadleModbusFeed {
       socket.onclose = () => {
         clearHeartbeatTimer();
         if (disposed) return;
-        if (canUseMockData) {
-          updateFeed({ status: 'retrying', source: 'ws', message: '连接断开，准备重连' });
-          retryTimer = window.setTimeout(connectWebSocket, WS_RETRY_DELAY_MS);
-        } else {
-          updateFeed({ status: 'error', source: 'ws', message: '连接已断开', payload: null });
-        }
+        // 真实接口模式也自动重连，但不回落 mock
+        updateFeed({ status: 'retrying', source: 'ws', message: '连接断开，准备重连' });
+        retryTimer = window.setTimeout(connectWebSocket, WS_RETRY_DELAY_MS);
       };
     };
 

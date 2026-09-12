@@ -20,6 +20,10 @@ docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:
 # 只展示钢包识别模块
 npm run docker:build:ladle-recognition
 docker run --rm -p 3001:8080 wincc:ladle-recognition
+
+# 钢包监测：真实后端为本机 8080，禁用 mock
+npm run docker:build:ladle-recognition:local-backend
+docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:ladle-recognition-local-backend
 ```
 
 容器监听 `8080`，上述命令会映射为本机的 `http://localhost:3001`。`NEXT_PUBLIC_*` 配置会在镜像构建时写入前端产物；变更这些配置后需要重新构建镜像。

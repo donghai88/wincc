@@ -1,0 +1,23 @@
+# 铁水沟生产运行时：Node 静态服务 + /api|/ws 反向代理 + /api/media/flv-ws 并发中转
+# 纯 Nginx 镜像无法提供 FLV WebSocket 中继，16 路热成像必须用本镜像。
+FROM node:22-alpine
+
+WORKDIR /app
+
+# 运行时仅依赖 ws；勿把 next/react 等构建依赖打进镜像
+RUN npm install --omit=dev ws@8.21.3
+
+COPY out ./out
+COPY scripts/serve-static.mjs ./scripts/serve-static.mjs
+
+ENV PORT=8080
+ENV API_PROXY_TARGET=http://host.docker.internal:8080
+# 可选：限制可代理的媒体机主机名，逗号分隔。未设置时允许私网地址。
+# ENV MEDIA_PROXY_ALLOW_HOSTS=192.168.1.12
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://127.0.0.1:8080/',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
+CMD ["node", "scripts/serve-static.mjs"]

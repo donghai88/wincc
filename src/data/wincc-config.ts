@@ -241,7 +241,7 @@ export const winccInstances: WinCCInstance[] = [
   {
     id: 'ladle-recognition-001',
     name: '热修位钢包识别',
-    location: '炼钢二厂 - 热修位',
+    location: '热修位',
     deviceType: 'ladle-recognition',
     status: 'online',
     lastUpdate: '2026-07-23 14:30:28',

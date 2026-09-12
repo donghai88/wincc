@@ -2,7 +2,7 @@
 
 import { AlertTriangle, LoaderCircle, Play, RotateCw, VideoOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { isMockOnly } from '@/lib/api-config';
+import { isMockOnly, buildFlvProxyWsUrl } from '@/lib/api-config';
 import {
   buildAuthenticatedStreamUrl,
   getMediaAccessToken,
@@ -117,9 +117,19 @@ export default function ZlMediaKitFlvPlayer({
         let token = await getMediaAccessToken();
         if (disposed) return;
 
+        // Production static host (scripts/serve-static.mjs) exposes /api/media/flv-ws.
+        // Next.js `next dev` has no WS upgrade for that path (handshake returns 200),
+        // so development plays authenticated HTTP(S)-FLV directly; production can
+        // fall back to direct play if the same-origin proxy is unavailable.
+        let preferFlvWsProxy = process.env.NODE_ENV === 'production';
+        let authRetried = false;
+
         const createAndPlay = (accessToken: string) => {
           destroyPlayer();
-          const playUrl = buildAuthenticatedStreamUrl(sourceUrl, accessToken);
+          const upstreamUrl = buildAuthenticatedStreamUrl(sourceUrl, accessToken);
+          const usingProxy = preferFlvWsProxy
+            && (upstreamUrl.startsWith('http://') || upstreamUrl.startsWith('https://'));
+          const playUrl = usingProxy ? buildFlvProxyWsUrl(upstreamUrl) : upstreamUrl;
           const nextPlayer = mpegts.createPlayer(
             {
               type: 'flv',
@@ -137,10 +147,38 @@ export default function ZlMediaKitFlvPlayer({
           );
 
           nextPlayer.on(mpegts.Events.ERROR, (...args: unknown[]) => {
+            if (disposed) return;
             const detail = args
               .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
               .filter(Boolean)
               .join(' / ');
+            const looksLikeAuthFailure = /auth|unauthor|401|403|鉴权|token/i.test(detail);
+
+            if (usingProxy) {
+              preferFlvWsProxy = false;
+              try {
+                createAndPlay(accessToken);
+                return;
+              } catch {
+                // fall through
+              }
+            }
+
+            if (looksLikeAuthFailure && !authRetried) {
+              authRetried = true;
+              void (async () => {
+                try {
+                  invalidateMediaAccessToken();
+                  const refreshed = await getMediaAccessToken({ forceRefresh: true });
+                  if (disposed) return;
+                  createAndPlay(refreshed);
+                } catch (error) {
+                  fail(error);
+                }
+              })();
+              return;
+            }
+
             fail(new Error(detail || 'FLV 播放失败'));
           });
 

@@ -18,8 +18,10 @@ if not exist "logs" mkdir "logs"
 
 set "PORT=3001"
 set "API_PROXY_TARGET=http://127.0.0.1:8080"
+if not defined SNAPSHOT_ALLOW_ROOTS set "SNAPSHOT_ALLOW_ROOTS=D:\data\ladle"
 
 echo Starting Ruihai frontend at http://127.0.0.1:%PORT%.
+echo Snapshot roots: %SNAPSHOT_ALLOW_ROOTS%
 echo Logs are being written to logs\frontend.log. Press Ctrl+C to stop.
 node scripts\serve-static.mjs 1>>"logs\frontend.log" 2>&1
 

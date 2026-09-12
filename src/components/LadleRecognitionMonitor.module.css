@@ -18,8 +18,9 @@
   position: relative;
   display: flex;
   width: 100%;
-  height: calc(100vh - 56px);
-  min-height: 720px;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
   overflow: hidden;
   background:
@@ -141,6 +142,26 @@
   font-weight: 620;
 }
 
+.logoutButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sim-muted);
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  background: rgba(248, 113, 113, 0.14);
+  color: var(--sim-red);
+}
+
 .statusPill::before {
   width: 8px;
   height: 8px;
@@ -172,8 +193,29 @@
   letter-spacing: 0.04em;
 }
 
-.devicePanel {
+.workspace > .deviceStack {
   display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.deviceRowThermal {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.deviceRowAux {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace > .devicePanel {
+  display: grid;
+  width: 100%;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
@@ -224,6 +266,26 @@
   border-radius: 999px;
   background: var(--sim-green);
   box-shadow: 0 0 12px var(--sim-green);
+}
+
+.statusDot[data-online='false'] {
+  background: #f87171;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.55);
+}
+
+.deviceOnlineTag {
+  margin-left: auto;
+  font: 10px var(--font-mono);
+  font-style: normal;
+  color: var(--sim-green);
+}
+
+.deviceCard[data-online='false'] .deviceOnlineTag {
+  color: #f87171;
+}
+
+.deviceCard[data-online='false'] {
+  border-color: rgba(248, 113, 113, 0.28);
 }
 
 .deviceLoc {
@@ -320,7 +382,7 @@
 .cameraRow,
 .tempRow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -333,6 +395,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 .panelHead h3 {
@@ -343,6 +406,62 @@
   color: #fff;
   font-size: 13px;
   font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panelHeadActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.feedOnline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #34d399;
+  font: 11px var(--font-mono);
+}
+
+.feedOnline[data-online='false'] {
+  color: #f87171;
+}
+
+.reconnectChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(34, 211, 238, 0.42);
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--sim-cyan);
+  font: 600 11px var(--font-mono);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.reconnectChip:hover:not(:disabled) {
+  border-color: rgba(34, 211, 238, 0.7);
+  background: rgba(34, 211, 238, 0.2);
+}
+
+.reconnectChip:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.reconnectSpin {
+  animation: reconnectSpin 0.9s linear infinite;
+}
+
+@keyframes reconnectSpin {
+  to { transform: rotate(360deg); }
 }
 
 .panelHead span,
@@ -359,44 +478,44 @@
   overflow: hidden;
   border: 1px solid rgba(125, 211, 252, 0.18);
   border-radius: var(--sim-radius);
-  background:
-    radial-gradient(circle at 48% 58%, rgba(251, 146, 60, 0.55), transparent 34%),
-    linear-gradient(135deg, #0b1a33, #3a1848 58%, #0a1018);
+  background: #000;
 }
 
-.thermalGlow {
-  position: absolute;
-  inset: 16% 20% 26%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 90, 40, 0.95), rgba(251, 191, 36, 0.35) 42%, transparent 70%);
-  filter: blur(2px);
-}
-
-.thermalGrid {
+.thermalPlayer {
   position: absolute;
   inset: 0;
-  opacity: 0.28;
-  background:
-    repeating-linear-gradient(90deg, transparent 0 36px, rgba(125, 211, 252, 0.16) 37px),
-    repeating-linear-gradient(0deg, transparent 0 28px, rgba(255, 255, 255, 0.06) 29px);
+  z-index: 0;
 }
 
-.thermalLadle {
+.thermalFeed[data-empty="true"],
+.snapshotThumb[data-empty="true"] {
+  background: #000;
+}
+
+.thermalEmpty {
   position: absolute;
-  left: 27%;
-  bottom: 10%;
-  width: 46%;
-  height: 48%;
-  border: 10px solid rgba(86, 29, 32, 0.95);
-  border-radius: 42% 42% 22% 22%;
-  background: radial-gradient(ellipse at center 22%, #fff557, #ff711e 25%, #b31d43 36%, #1d2a59 66%);
-  box-shadow: 0 18px 28px rgba(0, 0, 0, 0.45), 0 0 28px rgba(34, 211, 238, 0.12);
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(209, 226, 242, 0.42);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  background: #000;
+  z-index: 1;
+}
+
+.thermalGlow,
+.thermalGrid,
+.thermalLadle {
+  display: none;
 }
 
 .feedLabel,
 .feedPkg,
 .feedTemp {
   position: absolute;
+  z-index: 2;
   padding: 4px 7px;
   border: 1px solid rgba(125, 211, 252, 0.2);
   border-radius: 4px;
@@ -404,6 +523,7 @@
   color: #d5deea;
   font: 10px var(--font-mono);
   backdrop-filter: blur(8px);
+  pointer-events: none;
 }
 
 .feedLabel {
@@ -452,7 +572,7 @@
 
 .snapshotRow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
 }
@@ -479,21 +599,22 @@
   aspect-ratio: 640 / 512;
   width: 100%;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 48% 58%, rgba(251, 146, 60, 0.55), transparent 34%),
-    linear-gradient(135deg, #0b1a33, #3a1848 58%, #0a1018);
+  background: #000;
 }
 
-.snapshotThumb[data-tone='2'] {
-  background:
-    radial-gradient(circle at 52% 54%, rgba(255, 176, 46, 0.58), transparent 36%),
-    linear-gradient(135deg, #101a33, #4a1d3d 58%, #0b1420);
+.snapshotImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  z-index: 0;
 }
 
+.snapshotThumb[data-tone='2'],
 .snapshotThumb[data-tone='3'] {
-  background:
-    radial-gradient(circle at 46% 60%, rgba(255, 135, 64, 0.52), transparent 34%),
-    linear-gradient(135deg, #0c1528, #3d2468 58%, #0c121d);
+  background: #000;
 }
 
 .snapshotMeta {
@@ -837,9 +958,13 @@
 }
 
 @media (max-width: 1200px) {
+  .workspace > .devicePanel,
   .devicePanel,
+  .deviceRowThermal,
+  .deviceRowAux,
   .cameraRow,
   .tempRow,
+  .snapshotRow,
   .bottomGrid {
     grid-template-columns: 1fr 1fr;
   }
@@ -850,7 +975,10 @@
 }
 
 @media (max-width: 760px) {
+  .workspace > .devicePanel,
   .devicePanel,
+  .deviceRowThermal,
+  .deviceRowAux,
   .cameraRow,
   .tempRow,
   .snapshotRow,
@@ -860,7 +988,7 @@
   }
 
   .simShell {
-    height: auto;
-    min-height: calc(100vh - 56px);
+    height: 100%;
+    min-height: 0;
   }
 }

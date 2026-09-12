@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
 
 export interface User {
   username: string;
@@ -19,11 +18,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function currentPathname() {
+  const path = window.location.pathname.replace(/\/$/, '');
+  return path || '/';
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
     // 检查本地存储中的用户信息
@@ -39,15 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // 路由保护逻辑
-    if (!isLoading) {
-      if (!user && pathname !== '/login') {
-        router.push('/login');
-      } else if (user && pathname === '/login') {
-        router.push('/');
-      }
+    // 静态导出场景下用硬跳转，避免 App Router soft nav 卡住「加载中」
+    if (isLoading) return;
+    const pathname = currentPathname();
+    const onLogin = pathname === '/login';
+    if (!user && !onLogin) {
+      window.location.replace('/login');
+    } else if (user && onLogin) {
+      window.location.replace('/');
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading]);
 
   const login = (userData: User) => {
     localStorage.setItem('wincc_user', JSON.stringify(userData));
@@ -57,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('wincc_user');
     setUser(null);
-    router.push('/login?logout=success');
+    window.location.replace('/login?logout=success');
   };
 
   return (

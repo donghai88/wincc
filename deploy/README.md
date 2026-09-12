@@ -46,4 +46,5 @@ deploy\verify-deployment.cmd -SkipWebSocket
 
 - 此版本在构建时已经固定为真实 API 模式：不使用 Mock 数据。
 - 本机访问后端使用 `127.0.0.1:8080`；不需要浏览器直接访问 8080，也不会受跨域限制。
+- 测温截图：后端若返回 Windows 绝对路径（如 `D:\data\ladle\xxx.jpg`），前端会经 `/api/media/snapshot` 读取同机文件。默认白名单目录 `D:\data\ladle`，可用环境变量 `SNAPSHOT_ALLOW_ROOTS` 修改（逗号分隔多个目录）。
 - 关闭启动窗口或在窗口中按 `Ctrl+C` 可停止前端服务。

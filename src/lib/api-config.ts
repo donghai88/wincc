@@ -68,3 +68,43 @@ export const unwrapApiData = (payload: unknown) => {
 
   return payload;
 };
+
+/**
+ * Bypass browser HTTP/1.1 ~6-connection limit by pulling HTTP-FLV through
+ * same-origin WebSocket relay hosted by scripts/serve-static.mjs.
+ */
+export const buildFlvProxyWsUrl = (upstreamFlvUrl: string) => {
+  const proxy = new URL(buildWsUrl('/api/media/flv-ws'));
+  proxy.searchParams.set('target', upstreamFlvUrl);
+  return proxy.toString();
+};
+
+/**
+ * Resolve ladle snapshotPath for <img src>.
+ * - http(s) / protocol-relative / web paths: use directly (via API base when relative)
+ * - Windows absolute file paths (D:\...): same-origin Node proxy in serve-static.mjs
+ */
+export const resolveSnapshotUrl = (snapshotPath: string) => {
+  const trimmed = snapshotPath.trim();
+  if (!trimmed) return '';
+
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//')) {
+    const protocol = typeof window === 'undefined' ? 'http:' : window.location.protocol;
+    return `${protocol}${trimmed}`;
+  }
+
+  // Backend returns OS absolute paths like D:\data\ladle\xxx.jpg — browsers cannot open
+  // those; serve-static reads the file on the same host and exposes it over HTTP.
+  const isWindowsAbs = /^[A-Za-z]:[\\/]/.test(trimmed);
+  const isUncPath = trimmed.startsWith('\\\\');
+  if (isWindowsAbs || isUncPath) {
+    const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+    const url = new URL('/api/media/snapshot', origin);
+    url.searchParams.set('path', trimmed);
+    return url.toString();
+  }
+
+  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return buildApiUrl(path).toString();
+};

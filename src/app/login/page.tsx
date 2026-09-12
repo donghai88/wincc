@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { Flame, User, Lock, Eye, EyeOff, AlertCircle, CheckCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { isLadleProductMode } from '@/lib/product-mode';
 
 // 模拟用户数据
 const mockUsers = [
@@ -12,9 +12,8 @@ const mockUsers = [
   { username: 'viewer', password: 'view123', name: '观察员', role: 'viewer' as const },
 ];
 
-function LoginContent() {
+export default function LoginPage() {
   const { login } = useAuth();
-  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,14 +22,14 @@ function LoginContent() {
   const [logoutMessage, setLogoutMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 检查是否是登出后跳转
+  // 静态导出下避免 useSearchParams + Suspense 卡在「加载中」
   useEffect(() => {
-    if (searchParams.get('logout') === 'success') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('logout') === 'success') {
       setLogoutMessage('您已安全退出登录');
-      // 清除 URL 参数
       window.history.replaceState({}, '', '/login');
     }
-  }, [searchParams]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +116,7 @@ function LoginContent() {
               margin: 0,
             }}
           >
-            监控集成平台
+            {isLadleProductMode ? '钢包监测系统' : '监控集成平台'}
           </h1>
           <p
             style={{
@@ -126,12 +125,18 @@ function LoginContent() {
               margin: '8px 0 0',
             }}
           >
-            钢铁冶金监控系统
+            {isLadleProductMode ? '西安豪克电子有限公司' : '钢铁冶金监控系统'}
           </p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '32px 40px 40px' }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSubmit(e);
+          }}
+          style={{ padding: '32px 40px 40px' }}
+        >
           {/* Logout Message */}
           {logoutMessage && (
             <div
@@ -330,8 +335,12 @@ function LoginContent() {
 
           {/* Submit Button */}
           <button
-            type="submit"
+            type="button"
             disabled={isLoading}
+            onClick={(e) => {
+              e.preventDefault();
+              void handleSubmit(e as unknown as React.FormEvent);
+            }}
             style={{
               width: '100%',
               height: 44,
@@ -366,27 +375,3 @@ function LoginContent() {
   );
 }
 
-function LoginFallback() {
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--background)',
-        color: 'var(--text-tertiary)',
-      }}
-    >
-      加载中...
-    </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginFallback />}>
-      <LoginContent />
-    </Suspense>
-  );
-}

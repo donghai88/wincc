@@ -37,6 +37,8 @@ export interface LadleRecordRow {
 
 export interface LadleRecordDetail extends Omit<LadleRecordRow, 'id'> {
   id: number;
+  /** Absolute image URL/path for the last thermal snapshot (GET /ladle-record/latest). */
+  snapshotPath?: string | null;
 }
 
 export interface LadleRecordListQuery {
