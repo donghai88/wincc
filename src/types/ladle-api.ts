@@ -77,7 +77,7 @@ export interface LadleEntity {
   productionDate: string;
   plannedLifespan: number;
   estimatedRemainingLife: number;
-  latestTemperature: number;
+  latestTemperature: string;
   lastMaintenanceTime: string;
   totalUsageCount: number;
   currentStatus: LadleStatusCode;
@@ -93,7 +93,7 @@ export interface LadleListQuery {
   productionDate?: string;
   plannedLifespan?: number;
   estimatedRemainingLife?: number;
-  latestTemperature?: number;
+  latestTemperature?: string;
   lastMaintenanceTime?: string;
   totalUsageCount?: number;
   currentStatus?: LadleStatusCode;
