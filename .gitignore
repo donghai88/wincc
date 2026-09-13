@@ -20,8 +20,10 @@
 **/out/
 **/.next/
 *.zip
+*.tar
 .playwright-cli/
 ruihai-trough-real-api-*/
+ruihai-ladle-recognition-frontend-*/
 
 # production
 /build
