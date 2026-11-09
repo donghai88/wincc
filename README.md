@@ -2,99 +2,46 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## 分支
 
-当前分支 `product/integrated` 是集成平台和演示包的共同基线，铁水沟、山西钢包、本溪钢包的源码都在这里。产品交付分支从这里拉出，只固定默认模式和构建脚本，源码仍保留全部模块，方便把共享修复合回去：
+本分支 `product/ladle-recognition` 默认只呈现山西钢包识别：热成像为主，雷达渣线和钢包报表关闭。其它模块源码仍保留，共享修复从 `product/integrated` 合并。`npm run dev` 和 `npm run build` 已固定为该版本。
 
-- `product/trough`：铁水沟
-- `product/ladle-recognition`：山西钢包识别
-- `product/benxi-ladle`：本溪钢包
-
-演示包不单独占分支，仍在本分支用 `npm run dev:demo` / `npm run pack:demo` 构建。
-
-## Docker 部署
-
-`docker:build` 会先在构建机执行 `next build`，再将生成的静态 `out/` 封入镜像。最终镜像仅包含静态导出产物和 Nginx；运行容器不依赖源码、Node.js 或任何构建工具。
-
-```bash
-# 完整平台
-npm run docker:build
-docker run --rm -p 3001:8080 wincc:latest
-
-# 只展示铁水沟模块
-npm run docker:build:trough
-docker run --rm -p 3001:8080 wincc:trough
-
-# 铁水沟：真实后端为本机 8080 端口，禁用所有 mock/fallback 数据
-npm run docker:build:trough:local-backend
-docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:trough-local-backend
-
-# 只展示钢包识别模块
-npm run docker:build:ladle-recognition
-docker run --rm -p 3001:8080 wincc:ladle-recognition
-
-# 钢包监测：真实后端为本机 8080，禁用 mock
-npm run docker:build:ladle-recognition:local-backend
-docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:ladle-recognition-local-backend
-
-# 本溪钢包（含雷达渣线模块）
-npm run docker:build:benxi-ladle
-docker run --rm -p 3001:8080 wincc:benxi-ladle
-```
-
-容器监听 `8080`，上述命令会映射为本机的 `http://localhost:3001`。`NEXT_PUBLIC_*` 配置会在镜像构建时写入前端产物；变更这些配置后需要重新构建镜像。
-
-`build:trough:local-backend` 固定构建为铁水沟单模块，并写入 `NEXT_PUBLIC_API_MOCK_MODE=off`，不会使用 mock 或在接口失败时回退为 mock 数据。镜像通过 Nginx 将浏览器的同源 `/api/*` 和 `/ws/*` 请求代理到测试服务器宿主机的 `localhost:8080`；`--add-host=host.docker.internal:host-gateway` 是 Linux Docker 容器访问宿主机服务所必需的参数。这样外部浏览器不会把 `localhost:8080` 误解为访问者自己的电脑。
-
-镜像将 Nginx 访问日志和错误日志输出到标准输出/错误流，可在测试服务器执行 `docker logs -f <容器名>` 排查静态文件 404、接口状态码和请求耗时。
-
-## 本地演示版（源码部署，全部 Mock）
-
-演示版不限定产品模式，铁水沟、山西钢包、本溪钢包（雷达渣线 / 钢包报表等）全部可见，所有数据均为 Mock，不需要任何后端。雷达三维视图使用 `public/pointclouds/` 下的真实 PCD 作外观，侵蚀着色与数值来自 Mock。
+## 本地启动
 
 ```bash
 npm install
-npm run dev:demo    # 开发模式，http://localhost:3001
-npm run demo        # 构建静态产物后用 serve-static 启动，http://localhost:3001
-npm run pack:demo   # 构建并打出服务器演示包 dist/ruihai-demo-YYYYMMDD.{tar.gz,zip}
+npm run dev
 ```
 
-登录账号：`admin / admin123`。
+浏览器打开 http://localhost:3001。
 
-### 部署演示服务器
+## 构建与 Docker
 
-`npm run pack:demo` 产出的演示包只含静态页面和一个零依赖的启动脚本，演示机只需安装一次 Node.js 18+（推荐 22 LTS），不需要源码和 `npm install`。解压后 Windows 双击 `start-demo.cmd`，Linux 执行 `sh start-demo.sh`，默认端口 3001（环境变量 `PORT` 可改）。也可以直接用 nginx 托管包内的 `out/` 目录。详见包内 `README.md`（源文件 `deploy/demo/README.md`）。
-
-## 真实接口全链路冒烟测试
-
-脚本会在真实浏览器中登录页面，依次验证设备实时数据、温度趋势、告警分页/统计、周报查询/下载，以及两个铁水沟 WebSocket 连接。测试结果和失败截图会保存到 `output/e2e-api-smoke/`。
+`docker:build` 先执行本分支的构建，再将静态 `out/` 封入镜像。镜像只含静态产物和 Nginx。
 
 ```bash
-npx playwright install chromium
-E2E_BASE_URL=http://测试服务器IP:3001 npm run test:e2e:api
+npm run docker:build
+docker run --rm -p 3001:8080 wincc:ladle-recognition
+
+# 真实后端为本机 8080，禁用 mock
+npm run docker:build:local-backend
+docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:ladle-recognition-local-backend
 ```
 
-Windows CMD：
+容器监听 `8080`，映射为本机 `http://localhost:3001`。`NEXT_PUBLIC_*` 在构建时写入前端产物，变更后需要重新构建。
 
-```cmd
-set E2E_BASE_URL=http://测试服务器IP:3001 && npm run test:e2e:api
-```
+`build:local-backend` 写入 `NEXT_PUBLIC_API_MOCK_MODE=off`。镜像通过 Nginx 将同源 `/api/*` 和 `/ws/*` 代理到宿主机 `localhost:8080`。Linux 上需要 `--add-host=host.docker.internal:host-gateway`。现场包使用 `Dockerfile.serve-static`。
 
 ## 钢包监测冒烟测试
 
-默认按 **Mock UI** 验收钢包 5 个模块主流程（实时监控、数据查询含导出、曲线分析、报警管理、钢包管理 CRUD）。产物保存到 `output/e2e-ladle-smoke/`。
+默认按 Mock UI 验收实时监控、数据查询（含导出）、曲线分析、报警管理、钢包管理。结果保存到 `output/e2e-ladle-smoke/`。
 
 ```bash
-# 终端 1：启动钢包产品模式（默认 mock）
-npm run dev:ladle-recognition
-
-# 本溪钢包版（开启雷达渣线入口）
-# npm run dev:benxi-ladle
-
-# 终端 2：跑冒烟
+npm run dev
+# 另一终端
 npx playwright install chromium
 E2E_BASE_URL=http://127.0.0.1:3001 npm run test:e2e:ladle
 ```
 
-若已对接真实后端，可附加 `E2E_EXPECT_API=true`，脚本会额外等待 `/ladle-record/list`、`/ladle-chart/list`、`/alarm/page`、`/ladle/list` 等接口响应。
+对接真实后端时可附加 `E2E_EXPECT_API=true`，脚本会额外等待 `/ladle-record/list`、`/ladle-chart/list`、`/alarm/page`、`/ladle/list` 等接口响应。
 ## Getting Started
 
 First, run the development server:

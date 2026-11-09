@@ -3,14 +3,8 @@ import type { DeviceType } from '@/types/template';
 /**
  * 构建目标会被 NEXT_PUBLIC_PRODUCT_MODE 内联到浏览器产物中。
  * 未设置或不是已知模式时，使用 branchDefaultProductMode。
- * 集成分支为 null，呈现完整平台；产品分支把默认值固定为对应模式。
- *
- * 集成分支脚本：
- * - npm run dev                     → 集成平台（铁水沟 + 钢包识别，含本溪扩展）
- * - npm run dev:trough              → 仅铁水沟（平台一级菜单）
- * - npm run dev:ladle-recognition   → 仅钢包识别（热成像为主，雷达入口关闭）
- * - npm run dev:benxi-ladle         → 本溪钢包（钢包监测壳 + 开启雷达渣线模块）
- * - npm run dev:demo                → 集成平台，强制 Mock
+ * 本分支 product/ladle-recognition 未设置或设置了未知模式时，默认只呈现山西钢包识别。
+ * npm run dev / npm run build 会显式写入 NEXT_PUBLIC_PRODUCT_MODE=ladle-recognition。
  */
 export type ProductMode = 'trough' | 'ladle-recognition' | 'benxi-ladle';
 
@@ -56,8 +50,8 @@ function isProductMode(value: string | undefined): value is ProductMode {
   return value === 'trough' || value === 'ladle-recognition' || value === 'benxi-ladle';
 }
 
-/** 未设置 NEXT_PUBLIC_PRODUCT_MODE 时的默认产品。null 表示集成平台。 */
-const branchDefaultProductMode: ProductMode | null = null;
+/** 未设置 NEXT_PUBLIC_PRODUCT_MODE 时的默认产品。本分支固定为山西钢包识别。 */
+const branchDefaultProductMode: ProductMode | null = 'ladle-recognition';
 
 export const productMode = isProductMode(process.env.NEXT_PUBLIC_PRODUCT_MODE)
   ? process.env.NEXT_PUBLIC_PRODUCT_MODE
