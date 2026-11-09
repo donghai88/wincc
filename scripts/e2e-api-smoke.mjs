@@ -99,7 +99,7 @@ try {
   await waitForResponse(page, '周报下载', '/weekly/report/download', () => page.getByRole('button', { name: '下载周报', exact: true }).click());
 
   await page.getByRole('button', { name: '监控总览', exact: true }).click();
-  await page.getByRole('button', { name: /铁水沟/ }).first().click();
+  await page.getByRole('button', { name: /中间包/ }).first().click();
   await waitForWebSocket('/ws/modbus');
   await waitForWebSocket('/ws/business/alarm');
 

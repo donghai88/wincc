@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## 分支
 
-本分支 `product/trough` 默认只呈现铁水沟视觉仿真数字孪生。其它业务模块的源码仍保留，共享修复从 `product/integrated` 合并。`npm run dev` 和 `npm run build` 已固定为铁水沟。
+本分支 `product/trough` 默认只呈现中间包视觉仿真数字孪生。其它业务模块的源码仍保留，共享修复从 `product/integrated` 合并。`npm run dev` 和 `npm run build` 已固定为中间包。
 
 ## 本地启动
 
@@ -32,7 +32,7 @@ docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:
 
 ## 真实接口冒烟测试
 
-脚本会在真实浏览器中登录页面，依次验证设备实时数据、温度趋势、告警分页/统计、周报查询/下载，以及两个铁水沟 WebSocket 连接。结果保存到 `output/e2e-api-smoke/`。
+脚本会在真实浏览器中登录页面，依次验证设备实时数据、温度趋势、告警分页/统计、周报查询/下载，以及两个中间包 WebSocket 连接。结果保存到 `output/e2e-api-smoke/`。
 
 ```bash
 npx playwright install chromium

@@ -12,7 +12,7 @@ import {
   Flame,
   type LucideIcon,
 } from 'lucide-react';
-import { isLadleProductMode } from '@/lib/product-mode';
+import { isLadleProductMode, productBrandSubtitle, productBrandTitle } from '@/lib/product-mode';
 
 interface NavItem {
   id: string;
@@ -34,6 +34,14 @@ const visibleNavItems = isLadleProductMode
   ? navItems.filter((item) => item.id !== 'devices')
   : navItems;
 
+/** 长系统名在侧栏拆成主标题和较轻的后缀，避免在按钮旁被挤断。 */
+function brandTitleLines(title: string): [string, string] | [string] {
+  const suffix = '监测系统';
+  const index = title.indexOf(suffix);
+  if (index > 0) return [title.slice(0, index), title.slice(index)];
+  return [title];
+}
+
 interface SidebarProps {
   activeNav: string;
   onNavChange: (navId: string) => void;
@@ -52,7 +60,7 @@ export default function Sidebar({
   return (
     <aside
       style={{
-        width: collapsed ? 64 : 220,
+        width: collapsed ? 64 : 248,
         height: '100%',
         background: 'var(--surface)',
         borderRight: '1px solid var(--border)',
@@ -66,36 +74,61 @@ export default function Sidebar({
       {/* Logo */}
       <div
         style={{
-          padding: collapsed ? '24px 16px' : '24px 20px',
+          position: 'relative',
+          padding: collapsed ? '20px 16px' : '16px 14px 14px 16px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'space-between',
+          justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <div
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
+              width: 34,
+              height: 34,
+              borderRadius: 9,
               background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.22)',
             }}
           >
-            <Flame size={16} color="#fff" />
+            <Flame size={17} color="#fff" />
           </div>
           {!collapsed && (
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                监控集成平台
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                钢铁冶金监控系统
-              </div>
+            <div style={{ minWidth: 0 }}>
+              {brandTitleLines(productBrandTitle).map((line, index) => (
+                <div
+                  key={line}
+                  style={index === 0
+                    ? {
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        lineHeight: 1.25,
+                        letterSpacing: '0.03em',
+                        whiteSpace: 'nowrap',
+                      }
+                    : {
+                        marginTop: 2,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.2,
+                        letterSpacing: '0.18em',
+                      }}
+                >
+                  {line}
+                </div>
+              ))}
+              {productBrandSubtitle ? (
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  {productBrandSubtitle}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -103,8 +136,10 @@ export default function Sidebar({
           <button
             onClick={onToggleCollapse}
             style={{
-              width: 28,
-              height: 28,
+              marginLeft: 'auto',
+              flexShrink: 0,
+              width: 24,
+              height: 24,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

@@ -37,16 +37,16 @@ export const deviceTypes: DeviceTypeConfig[] = [
   // },
   // {
   //   id: 'hot-metal-trough',
-  //   name: '铁水沟',
-  //   description: '铁水沟通道数字孪生监控',
+  //   name: '中间包',
+  //   description: '中间包通道数字孪生监控',
   //   icon: 'waves',
   //   color: '#8b5cf6',
   //   templateId: 'trough-monitor',
   // },
   {
     id: 'hot-metal-trough-sim',
-    name: '铁水沟',
-    description: '铁水沟视觉仿真数字孪生',
+    name: '中间包',
+    description: '中间包视觉仿真数字孪生',
     icon: 'waves',
     color: '#06b6d4',
     templateId: 'trough-sim-monitor',
@@ -97,16 +97,16 @@ export const templates: TemplateConfig[] = [
   },
   {
     id: 'trough-monitor',
-    name: '铁水沟监控',
-    description: '铁水沟通道数字孪生监控',
+    name: '中间包监控',
+    description: '中间包通道数字孪生监控',
     icon: 'waves',
     color: '#8b5cf6',
     supportedDeviceTypes: ['hot-metal-trough'],
   },
   {
     id: 'trough-sim-monitor',
-    name: '铁水沟一仿真',
-    description: '铁水沟视觉仿真数字孪生演示',
+    name: '中间包一仿真',
+    description: '中间包视觉仿真数字孪生演示',
     icon: 'waves',
     color: '#06b6d4',
     supportedDeviceTypes: ['hot-metal-trough-sim'],
@@ -217,11 +217,11 @@ export const winccInstances: WinCCInstance[] = [
     ipAddress: '192.168.10.401',
     tags: ['加热中'],
   },
-  // 铁水沟
+  // 中间包
   {
     id: 'trough-001',
-    name: '1号铁水沟',
-    location: '高炉车间 - 铁水沟',
+    name: '1号中间包',
+    location: '高炉车间 - 中间包',
     deviceType: 'hot-metal-trough',
     status: 'online',
     lastUpdate: '2024-01-15 14:30:08',
@@ -230,7 +230,7 @@ export const winccInstances: WinCCInstance[] = [
   },
   {
     id: 'trough-sim-001',
-    name: '铁水沟',
+    name: '中间包',
     location: '高炉车间 - 出铁区',
     deviceType: 'hot-metal-trough-sim',
     status: 'online',
@@ -800,7 +800,7 @@ export function getIronLevelAlarms(instanceId: string): AlarmInfo[] {
   return alarmsMap[instanceId] || [];
 }
 
-// 铁水沟数字孪生模拟数据
+// 中间包数字孪生模拟数据
 export function getHotMetalTroughMetrics(instanceId: string): HotMetalTroughMetrics {
   const metricsMap: Record<string, HotMetalTroughMetrics> = {
     'trough-001': {

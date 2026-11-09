@@ -260,7 +260,7 @@ export default function DeviceMonitorPanel({
     );
   }
 
-  // 铁水沟：视觉仿真数字孪生
+  // 中间包：视觉仿真数字孪生
   if (isHotMetalTroughSim) {
     return (
       <>

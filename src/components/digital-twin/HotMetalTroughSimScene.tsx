@@ -12,7 +12,7 @@ import {
 } from '@/data/trough-monitor-points';
 import type { DigitalTwinBusinessAlarm, DigitalTwinTemperaturePoint, ModbusFeedStatus } from '@/types/digital-twin';
 
-const MODEL_PATH = '/cad/langan.glb';
+const MODEL_PATH = '/cad/donghua.glb';
 const NORMALIZED_SPAN = 13.8;
 
 const flowCurve = new THREE.CatmullRomCurve3([
@@ -233,6 +233,22 @@ function shouldShowCadEdge(profile: MeshProfile, materialKey: IndustrialMaterial
   return profile.longest < 2.8 || materialKey === 'galvanizedRail' || materialKey === 'coolingPipe';
 }
 
+function lowestMeshWorldY(root: THREE.Object3D) {
+  const vertex = new THREE.Vector3();
+  let minY = Number.POSITIVE_INFINITY;
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry?.getAttribute('position');
+    if (!position) return;
+    for (let index = 0; index < position.count; index += 1) {
+      vertex.fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+      if (vertex.y < minY) minY = vertex.y;
+    }
+  });
+  return Number.isFinite(minY) ? minY : 0;
+}
+
 function normalizeModel(scene: THREE.Group) {
   const root = scene.clone(true);
   const box = new THREE.Box3().setFromObject(root);
@@ -244,6 +260,9 @@ function normalizeModel(scene: THREE.Group) {
 
   root.scale.setScalar(scale);
   root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+  root.updateMatrixWorld(true);
+  // 包围盒被模型自带的底部线框拉低，实体沟体因此悬空。离地高度降为当前的一半。
+  root.position.y -= lowestMeshWorldY(root) / 2;
   root.updateMatrixWorld(true);
 
   const materials = createIndustrialMaterials();
@@ -321,61 +340,133 @@ function Label({
 interface SurfaceMonitorPoint {
   /** Stable key shared with the server, e.g. loc_1. */
   locationId: string;
-  anchor: [number, number];
-  rayOrigin: [number, number, number];
-  rayDirection: [number, number, number];
   radius: number;
 }
 
-/** Cross-beam Z centers from CAD (pCube2…pCube9), tight → loose = row 1 → row 7. */
-const BEAM_Z_TIGHT_TO_LOOSE = [6.754, 5.537, 4.447, 3.358, 1.387, -0.845, -3.077, -6.581] as const;
+interface SurfaceSample {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+}
+
+const SURFACE_MONITOR_POINTS: SurfaceMonitorPoint[] = TROUGH_MONITOR_POINTS.map((monitorPoint) => ({
+  locationId: monitorPoint.locationId,
+  radius: 0.12,
+}));
 
 /**
- * Floor–wall junction: project straight down onto the trough floor
- * just inside the side wall (inner floor edge ≈ ±4.0, floor Y ≈ 0.25).
- * Left = camera-near (+X); right = far side (−X).
+ * 13 个点铺在沟体四周和沟底：两条长侧壁各 4 个，两端各 1 个，沟底 3 个。
+ * 射线从外侧打到朝向自己的面，并只保留靠近外壳的命中，避免穿进内腔。
  */
-const FLOOR_WALL_JUNCTION_X = {
-  左侧: 3.98,
-  右侧: -3.98,
-} as const;
+function sampleEvenSurfacePoints(model: THREE.Object3D, count: number): SurfaceSample[] {
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  if (size.x < 0.001 || size.z < 0.001 || size.y < 0.001) return [];
 
-function rowGap(row: number) {
-  const zStart = BEAM_Z_TIGHT_TO_LOOSE[row - 1];
-  const zEnd = BEAM_Z_TIGHT_TO_LOOSE[row];
-  const mid = (zStart + zEnd) / 2;
-  const gap = zStart - zEnd;
-  return { zStart, zEnd, mid, gap };
-}
+  const longAxis: 'x' | 'z' = size.x >= size.z ? 'x' : 'z';
+  const crossAxis: 'x' | 'z' = longAxis === 'x' ? 'z' : 'x';
+  const raycaster = new THREE.Raycaster();
 
-function junctionAnchor(side: keyof typeof FLOOR_WALL_JUNCTION_X, z: number): Pick<SurfaceMonitorPoint, 'anchor' | 'rayOrigin' | 'rayDirection'> {
-  const x = FLOOR_WALL_JUNCTION_X[side];
-  return {
-    anchor: [x, z],
-    rayOrigin: [x, 18, z],
-    rayDirection: [0, -1, 0],
+  const cast = (origin: THREE.Vector3, direction: THREE.Vector3) => {
+    const dir = direction.clone().normalize();
+    raycaster.set(origin, dir);
+    const hit = raycaster.intersectObject(model, true).find((intersection) => (intersection.object as THREE.Mesh).isMesh && intersection.face);
+    if (!hit?.face) return null;
+    const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+    if (normal.dot(dir) > -0.45) return null;
+    return { point: hit.point.clone(), normal };
   };
-}
 
-function buildSurfaceMonitorPoints(): SurfaceMonitorPoint[] {
-  return TROUGH_MONITOR_POINTS.map((monitorPoint) => {
-    const { mid, gap } = rowGap(monitorPoint.row);
-    // Row 6 carries two points in the bay: front toward tight (+Z), rear toward loose (−Z).
-    const z = monitorPoint.depth === '前'
-      ? mid + gap * 0.25
-      : monitorPoint.depth === '后'
-        ? mid - gap * 0.25
-        : mid;
+  const keepOuterShell = (hits: SurfaceSample[], axis: 'x' | 'z', sign: 1 | -1) => {
+    const outside = sign > 0 ? box.max[axis] : box.min[axis];
+    const ranked = hits
+      .map((hit) => ({ hit, depth: Math.abs(hit.point[axis] - outside) }))
+      .sort((left, right) => left.depth - right.depth);
+    const cutoff = ranked[Math.floor(ranked.length * 0.4)]?.depth ?? 1;
+    return ranked.filter((item) => item.depth <= cutoff + 0.2).map((item) => item.hit);
+  };
 
-    return {
-      locationId: monitorPoint.locationId,
-      ...junctionAnchor(monitorPoint.side, z),
-      radius: 0.12,
-    };
+  const collectSide = (axis: 'x' | 'z', sign: 1 | -1, steps: number) => {
+    const along = axis === longAxis ? crossAxis : longAxis;
+    const hits: SurfaceSample[] = [];
+    for (let step = 0; step < steps; step += 1) {
+      const alongValue = box.min[along] + size[along] * ((step + 0.5) / steps);
+      for (const height of [0.72, 0.84, 0.93]) {
+        const origin = new THREE.Vector3();
+        origin[along] = alongValue;
+        origin.y = box.min.y + size.y * height;
+        origin[axis] = sign > 0 ? box.max[axis] + 3 : box.min[axis] - 3;
+        const direction = new THREE.Vector3();
+        direction[axis] = -sign;
+        const hit = cast(origin, direction);
+        if (hit) hits.push(hit);
+      }
+    }
+    return keepOuterShell(hits, axis, sign);
+  };
+
+  const floorHits: SurfaceSample[] = [];
+  for (let step = 0; step < 14; step += 1) {
+    for (let across = 0; across < 8; across += 1) {
+      const origin = new THREE.Vector3();
+      origin[longAxis] = box.min[longAxis] + size[longAxis] * ((step + 0.5) / 14);
+      origin[crossAxis] = box.min[crossAxis] + size[crossAxis] * ((across + 0.5) / 8);
+      origin.y = box.max.y + 2;
+      const hit = cast(origin, new THREE.Vector3(0, -1, 0));
+      if (!hit || hit.normal.y < 0.65) continue;
+      if (hit.point.y > box.min.y + size.y * 0.85) continue;
+      floorHits.push(hit);
+    }
+  }
+
+  const pickEven = (hits: SurfaceSample[], axis: 'x' | 'z', quota: number) => {
+    const pool = [...hits];
+    const chosen: SurfaceSample[] = [];
+    for (let index = 0; index < quota && pool.length > 0; index += 1) {
+      const target = box.min[axis] + size[axis] * ((index + 0.5) / quota);
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      pool.forEach((hit, hitIndex) => {
+        const distance = Math.abs(hit.point[axis] - target);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = hitIndex;
+        }
+      });
+      const [hit] = pool.splice(bestIndex, 1);
+      chosen.push(hit);
+    }
+    return chosen;
+  };
+
+  const floorQuota = Math.max(1, Math.round(count * 3 / 13));
+  const endQuota = count >= 8 ? 1 : 0;
+  let sideQuota = Math.floor((count - floorQuota - endQuota * 2) / 2);
+  if (sideQuota < 1) sideQuota = 1;
+
+  const positiveCross = collectSide(crossAxis, 1, 16);
+  const negativeCross = collectSide(crossAxis, -1, 16);
+  const positiveLong = collectSide(longAxis, 1, 8);
+  const negativeLong = collectSide(longAxis, -1, 8);
+  const chosen = [
+    ...pickEven(positiveCross, longAxis, sideQuota),
+    ...pickEven(negativeCross, longAxis, sideQuota),
+    ...pickEven(positiveLong, crossAxis, endQuota),
+    ...pickEven(negativeLong, crossAxis, endQuota),
+    ...pickEven(floorHits, longAxis, floorQuota),
+  ];
+  const used = new Set(chosen);
+  [...floorHits, ...positiveCross, ...negativeCross, ...positiveLong, ...negativeLong].forEach((hit) => {
+    if (chosen.length >= count || used.has(hit)) return;
+    used.add(hit);
+    chosen.push(hit);
   });
-}
 
-const SURFACE_MONITOR_POINTS = buildSurfaceMonitorPoints();
+  chosen.sort((left, right) => (
+    left.point[longAxis] - right.point[longAxis] || left.point[crossAxis] - right.point[crossAxis]
+  ));
+  return chosen.slice(0, count);
+}
 
 function ModbusTemperatureSurfaceGrid({
   point,
@@ -391,7 +482,7 @@ function ModbusTemperatureSurfaceGrid({
   modelRef: React.RefObject<THREE.Group | null>;
 }) {
   const markerRefs = useRef<Array<THREE.Group | null>>([]);
-  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const labelRefs = useRef<Array<THREE.Group | null>>([]);
   const hasSnapped = useRef(false);
   const isDisconnected = status === 'error';
   const isRetrying = status === 'retrying';
@@ -415,29 +506,20 @@ function ModbusTemperatureSurfaceGrid({
 
   useFrame(({ camera, size }) => {
     const model = modelRef.current;
-    if (model && !hasSnapped.current) {
+    const markersReady = markerRefs.current.length >= SURFACE_MONITOR_POINTS.length
+      && markerRefs.current.slice(0, SURFACE_MONITOR_POINTS.length).every(Boolean);
+    if (model && markersReady && !hasSnapped.current) {
       model.updateWorldMatrix(true, true);
-      SURFACE_MONITOR_POINTS.forEach((monitorPoint, index) => {
+      const samples = sampleEvenSurfacePoints(model, SURFACE_MONITOR_POINTS.length);
+      samples.forEach((sample, index) => {
         const marker = markerRefs.current[index];
         if (!marker) return;
-
-        // Project down onto the floor–wall junction for each beam bay.
-        raycaster.set(new THREE.Vector3(...monitorPoint.rayOrigin), new THREE.Vector3(...monitorPoint.rayDirection));
-        const hit = raycaster.intersectObject(model, true).find((intersection) => (intersection.object as THREE.Mesh).isMesh);
-        if (!hit) {
-          marker.visible = false;
-          return;
-        }
-
-        const normal = hit.face
-          ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize()
-          : new THREE.Vector3(0, 1, 0);
-        marker.position.copy(hit.point).addScaledVector(normal, 0.018);
-        marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
-        marker.userData.surfaceNormal = normal;
+        marker.position.copy(sample.point).addScaledVector(sample.normal, 0.018);
+        marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sample.normal);
+        marker.userData.surfaceNormal = sample.normal;
         marker.userData.snapped = true;
       });
-      hasSnapped.current = true;
+      hasSnapped.current = samples.length > 0;
     }
 
     const candidates = markerRefs.current
@@ -448,8 +530,9 @@ function ModbusTemperatureSurfaceGrid({
         const projected = marker.getWorldPosition(new THREE.Vector3()).project(camera);
         return {
           marker,
+          label: labelRefs.current[index],
           active: SURFACE_MONITOR_POINTS[index].locationId === activeMonitorPoint?.locationId,
-          eligible: normal.dot(cameraDirection) > 0.1 && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.1 && Math.abs(projected.y) <= 1.1,
+          eligible: normal.dot(cameraDirection) > 0.05 && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.15 && Math.abs(projected.y) <= 1.15,
           x: (projected.x * 0.5 + 0.5) * size.width,
           y: (-projected.y * 0.5 + 0.5) * size.height,
           depth: projected.z,
@@ -460,9 +543,10 @@ function ModbusTemperatureSurfaceGrid({
 
     const occupied: Array<{ x: number; y: number }> = [];
     candidates.forEach((candidate) => {
-      const hasSpace = occupied.every((position) => Math.hypot(candidate.x - position.x, candidate.y - position.y) >= 150);
-      candidate.marker.visible = candidate.eligible && hasSpace;
-      if (candidate.marker.visible) occupied.push(candidate);
+      const hasSpace = occupied.every((position) => Math.hypot(candidate.x - position.x, candidate.y - position.y) >= 88);
+      candidate.marker.visible = candidate.eligible;
+      if (candidate.label) candidate.label.visible = candidate.eligible && hasSpace;
+      if (candidate.eligible && hasSpace) occupied.push(candidate);
     });
   });
 
@@ -495,6 +579,7 @@ function ModbusTemperatureSurfaceGrid({
               <circleGeometry args={[active ? 0.055 : 0.032, 20]} />
               <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.92 : 0.62} depthWrite={false} blending={THREE.AdditiveBlending} />
             </mesh>
+            <group ref={(node) => { labelRefs.current[index] = node; }}>
             <Html position={[0, 0.07, 0]} center distanceFactor={12.5} style={{ pointerEvents: 'none', userSelect: 'none' }}>
               <div
                 style={{
@@ -516,6 +601,7 @@ function ModbusTemperatureSurfaceGrid({
                 </strong>
               </div>
             </Html>
+            </group>
           </group>
         );
       })}
@@ -747,7 +833,7 @@ function FlowField({ activeLayer }: HotMetalTroughSimSceneProps) {
       </mesh>
       <Line points={flowCurve.getPoints(80)} color="#67e8f9" lineWidth={2} transparent opacity={0.62 * opacity} />
       <FlowParticles opacity={opacity} />
-      {activeLayer === 'flow' && <Label position={[3.85, 1.28, -0.52]} label="铁水沟流场" value="3.6t/min" color="#22d3ee" />}
+      {activeLayer === 'flow' && <Label position={[3.85, 1.28, -0.52]} label="中间包流场" value="3.6t/min" color="#22d3ee" />}
     </group>
   );
 }

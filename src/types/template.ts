@@ -6,8 +6,8 @@ export type DeviceType =
   | 'converter'       // 转炉
   | 'continuous-cast' // 连铸机
   | 'heating-furnace' // 加热炉
-  | 'hot-metal-trough' // 铁水沟
-  | 'hot-metal-trough-sim' // 铁水沟一（视觉仿真）
+  | 'hot-metal-trough' // 中间包
+  | 'hot-metal-trough-sim' // 中间包一（视觉仿真）
   | 'ladle-recognition'; // 钢包识别
 
 // 设备类型配置
@@ -99,7 +99,7 @@ export interface MetricValue {
   trend?: number;         // 趋势变化百分比
 }
 
-// 铁水沟数字孪生指标
+// 中间包数字孪生指标
 export interface HotMetalTroughMetrics {
   ironLevel: MetricValue;
   ironTemp: MetricValue;

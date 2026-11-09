@@ -3,7 +3,7 @@ import type { DeviceType } from '@/types/template';
 /**
  * 构建目标会被 NEXT_PUBLIC_PRODUCT_MODE 内联到浏览器产物中。
  * 未设置或不是已知模式时，使用 branchDefaultProductMode。
- * 本分支 product/trough 未设置或设置了未知模式时，默认只呈现铁水沟。
+ * 本分支 product/trough 未设置或设置了未知模式时，默认只呈现中间包。
  * npm run dev / npm run build 会显式写入 NEXT_PUBLIC_PRODUCT_MODE=trough。
  */
 export type ProductMode = 'trough' | 'ladle-recognition' | 'benxi-ladle';
@@ -19,12 +19,12 @@ const ladleVendorName = '西安豪克电子有限公司';
 const demoVendorName = '天津市瑞海电子科技有限公司';
 
 const productConfigs: Record<ProductMode, ProductConfig> = {
-  // 当前“铁水沟”产品对应视觉仿真数字孪生模块。
+  // 当前“中间包”产品对应视觉仿真数字孪生模块。
   trough: {
     deviceType: 'hot-metal-trough-sim',
-    title: '铁水沟视觉仿真数字孪生',
-    brandTitle: '监控集成平台',
-    brandSubtitle: '钢铁冶金监控系统',
+    title: '中间包视觉仿真数字孪生',
+    brandTitle: '三流板坯中间包监测系统',
+    brandSubtitle: '',
   },
   'ladle-recognition': {
     deviceType: 'ladle-recognition',
@@ -50,7 +50,7 @@ function isProductMode(value: string | undefined): value is ProductMode {
   return value === 'trough' || value === 'ladle-recognition' || value === 'benxi-ladle';
 }
 
-/** 未设置 NEXT_PUBLIC_PRODUCT_MODE 时的默认产品。本分支固定为铁水沟。 */
+/** 未设置 NEXT_PUBLIC_PRODUCT_MODE 时的默认产品。本分支固定为中间包。 */
 const branchDefaultProductMode: ProductMode | null = 'trough';
 
 export const productMode = isProductMode(process.env.NEXT_PUBLIC_PRODUCT_MODE)

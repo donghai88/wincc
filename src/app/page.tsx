@@ -158,7 +158,7 @@ export default function Home() {
     );
   }
 
-  // 钢包产品版业务菜单为一级；监控总览进入层级与铁水沟共用
+  // 钢包产品版业务菜单为一级；监控总览进入层级与中间包共用
   const isLadleShell = ladleShellActive;
   const useLadleProductSidebar = isLadleProductMode;
   const isHotMetalTrough = selectedDeviceType === 'hot-metal-trough';
@@ -369,10 +369,10 @@ export default function Home() {
       return ladleNavTitles[activeNav];
     }
     if (activeNav === 'dashboard' && selectedDeviceType === 'hot-metal-trough-sim') {
-      return '铁水沟一视觉仿真';
+      return '中间包一视觉仿真';
     }
     if (activeNav === 'dashboard' && selectedDeviceType === 'hot-metal-trough') {
-      return '铁水沟数字孪生';
+      return '中间包数字孪生';
     }
     if (activeNav === 'dashboard' && selectedDeviceType === 'ladle-recognition' && ladlePanelMode === 'radar') {
       return '雷达渣线检测';

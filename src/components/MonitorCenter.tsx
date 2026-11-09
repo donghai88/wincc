@@ -59,7 +59,9 @@ const buildThermalStreamUrls = (streamId: string) => ({
   rtsp: streamId ? `rtsp://192.168.1.202:8554/rtp/${streamId}` : '',
 });
 
-const documentThermalCameraFeeds: ThermalCameraFeed[] = Array.from({ length: 16 }, (_, index) => {
+const THERMAL_CAMERA_COUNT = DOCUMENT_THERMAL_CAMERA_STREAMS.length;
+
+const documentThermalCameraFeeds: ThermalCameraFeed[] = Array.from({ length: THERMAL_CAMERA_COUNT }, (_, index) => {
   const source = DOCUMENT_THERMAL_CAMERA_STREAMS[index];
   const streamId = source?.streamId ?? '';
   const deviceId = source?.deviceId ?? '';
@@ -112,7 +114,7 @@ const normalizeThermalCameraFeeds = (payload: unknown): ThermalCameraFeed[] => {
     throw new Error('热成像列表接口返回结构不符合文档：应为数组');
   }
 
-  return Array.from({ length: 16 }, (_, index) => {
+  return Array.from({ length: THERMAL_CAMERA_COUNT }, (_, index) => {
     const record = typeof data[index] === 'object' && data[index] !== null
       ? data[index] as Record<string, unknown>
       : {};
@@ -621,7 +623,7 @@ export default function MonitorCenter() {
                   color: 'var(--text-primary)',
                 }}
               >
-                16个热成像监控列表
+                {THERMAL_CAMERA_COUNT}个热成像监控列表
               </h2>
               <div
                 style={{

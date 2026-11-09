@@ -97,7 +97,7 @@ const DOCUMENTED_TREND_QUERY = {
   periodMinutes: 2,
 };
 
-/** Mock 下拉与 16 个监控点一致。样例曲线仍只有 loc_2 那一段。 */
+/** Mock 下拉与监控点表一致。样例曲线仍只有 loc_2 那一段。 */
 const FALLBACK_REPORT_LOCATIONS: ReportLocation[] = TROUGH_MONITOR_POINTS.map((point) => ({
   id: point.locationId,
   name: point.locationName,

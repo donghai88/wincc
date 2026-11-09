@@ -126,7 +126,7 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
 
   const statusRows = [
     { label: '连接状态', value: feedStatusLabel },
-    { label: '已更新', value: `${liveCount} / 16` },
+    { label: '已更新', value: `${liveCount} / ${TROUGH_MONITOR_POINTS.length}` },
     { label: '最后推送', value: modbusPoint?.receivedAt ?? '--' },
   ];
 
@@ -191,7 +191,7 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
           <section className={styles.statusPanel}>
             <div className={styles.panelHeader}>
               <strong>资源状态</strong>
-              <span className={styles.panelHint}>16 测点总览</span>
+              <span className={styles.panelHint}>{TROUGH_MONITOR_POINTS.length} 测点总览</span>
             </div>
 
             <div className={styles.statusStrip} aria-label="连接概览" data-status={isBusinessAlarmActive ? 'alarm' : modbusFeed.status}>
@@ -223,10 +223,10 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
 
             <div className={styles.pointSectionHeader}>
               <span>测点温度</span>
-              <strong>有数 {liveCount} · 空位 {16 - liveCount}</strong>
+              <strong>有数 {liveCount} · 空位 {TROUGH_MONITOR_POINTS.length - liveCount}</strong>
             </div>
 
-            <div className={styles.pointGrid} aria-label="十六测点温度">
+            <div className={styles.pointGrid} aria-label="十三测点温度">
               {pointRows.map((row) => (
                 <div
                   key={row.id}
