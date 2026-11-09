@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>钢包智能监测驾驶舱 · 北营钢铁炼钢二厂</title>
+<style>
+:root{
+  --bg:#070B12; --bg2:#0A1018; --panel:#0E1626; --panel2:#121C2E;
+  --line:#1E2C44; --line2:#2A3B58;
+  --txt:#E8F0FA; --sub:#7E90AC; --dim:#4E5F7A;
+  --cyan:#22D3EE; --green:#22C55E; --amber:#F59E0B; --red:#EF4444; --blue:#3B82F6;
+  --greenD:#0E7A46; --amberD:#8A5B08; --redD:#8E1F1F;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC",sans-serif;font-size:13px;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;background:
+  radial-gradient(1100px 600px at 12% -10%,rgba(34,211,238,.09),transparent 60%),
+  radial-gradient(900px 500px at 92% 0%,rgba(239,68,68,.07),transparent 60%);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;max-width:1760px;margin:0 auto;padding:0 22px 40px}
+
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:30;background:rgba(7,11,18,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.hd{max-width:1760px;margin:0 auto;padding:12px 22px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:11px}
+.logo .mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#F59E0B,#EF4444);position:relative;flex:none}
+.logo .mark::after{content:"";position:absolute;inset:7px;border-radius:3px;border:2px solid rgba(0,0,0,.55);border-top-color:transparent}
+.logo h1{font-size:16px;font-weight:600;letter-spacing:.5px;line-height:1.2}
+.logo p{font-size:11px;color:var(--sub);letter-spacing:1px}
+.kpis{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 14px;min-width:96px}
+.kpi b{display:block;font-size:20px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;color:var(--sub)}
+.kpi.ok b{color:var(--green)} .kpi.wa b{color:var(--amber)} .kpi.dg b{color:var(--red)} .kpi.cy b{color:var(--cyan)}
+.devs{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.dev{display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:11px;color:var(--sub)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 7px var(--green)}
+.dot.w{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.dot.r{background:var(--red);box-shadow:0 0 7px var(--red)}
+.clock{font-variant-numeric:tabular-nums;font-size:12px;color:var(--sub);min-width:150px}
+.clock b{color:var(--txt);font-size:14px}
+
+/* ---------- nav ---------- */
+nav{display:flex;gap:4px;padding:14px 0 16px;flex-wrap:wrap;align-items:center}
+nav button{background:var(--panel);border:1px solid var(--line);color:var(--sub);padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;transition:.18s}
+nav button:hover{color:var(--txt);border-color:var(--line2)}
+nav button.on{background:linear-gradient(135deg,rgba(34,211,238,.18),rgba(59,130,246,.12));border-color:var(--cyan);color:#fff}
+.crumb{margin-left:auto;font-size:12px;color:var(--dim)}
+.crumb b{color:var(--cyan)}
+
+/* ---------- generic ---------- */
+.card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:12px}
+.sec-t{font-size:13px;font-weight:600;padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+.sec-t::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--cyan)}
+.sec-t .r{margin-left:auto;font-size:11px;color:var(--sub);font-weight:400}
+.pad{padding:14px 16px}
+.grid{display:grid;gap:14px}
+.mono{font-family:Consolas,Monaco,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--sub)} .dim{color:var(--dim)}
+
+/* ---------- overview ---------- */
+.ov{display:grid;grid-template-columns:290px 1fr;gap:14px}
+.stat-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed rgba(46,62,90,.5)}
+.stat-row:last-child{border:none}
+.stat-row .nm{width:66px;font-size:12px;color:var(--sub);flex:none}
+.bar{flex:1;height:7px;background:#111C2E;border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px}
+.stat-row .vl{width:42px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.alarm{display:flex;gap:9px;padding:9px 0;border-bottom:1px dashed rgba(46,62,90,.5);cursor:pointer}
+.alarm:last-child{border:none}
+.alarm:hover .al-t{color:var(--cyan)}
+.al-ic{width:26px;height:26px;border-radius:6px;flex:none;display:grid;place-items:center;font-size:11px;font-weight:700}
+.al-t{font-size:12px;line-height:1.45}
+.al-t b{display:block}
+.al-s{font-size:11px;color:var(--dim)}
+
+.ladles{display:grid;grid-template-columns:repeat(auto-fill,minmax(322px,1fr));gap:14px}
+.lad{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+.lad:hover{transform:translateY(-3px);border-color:var(--line2);box-shadow:0 14px 34px rgba(0,0,0,.5)}
+.lad::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
+.lad.lv0::before{background:var(--green)} .lad.lv1::before{background:var(--amber)} .lad.lv2::before{background:var(--red)}
+.lad.sel{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(34,211,238,.4),0 14px 34px rgba(0,0,0,.5)}
+.lad-hd{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.lad-no{font-size:21px;font-weight:600;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.lad-no small{font-size:11px;color:var(--sub);font-weight:400;margin-left:5px}
+.badge{font-size:10.5px;padding:2.5px 8px;border-radius:20px;border:1px solid;font-weight:500}
+.b0{color:var(--green);border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.1)}
+.b1{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1)}
+.b2{color:var(--red);border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.12)}
+.bn{color:var(--sub);border-color:var(--line2);background:rgba(126,144,172,.08)}
+.lad-hd .risk{margin-left:auto;text-align:right;line-height:1.1}
+.lad-hd .risk b{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.lad-hd .risk span{display:block;font-size:10px;color:var(--dim)}
+.lad-bd{display:flex;gap:13px;align-items:center}
+.compass{flex:none;position:relative}
+.compass .cv{display:block;width:112px;height:112px}
+.compass .mid{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;text-align:center;line-height:1.15}
+.compass .mid b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.compass .mid span{font-size:9px;color:var(--dim)}
+.mets{flex:1;min-width:0;display:grid;gap:8px}
+.met{display:flex;align-items:baseline;gap:6px;font-size:11.5px}
+.met .k{color:var(--sub);width:64px;flex:none}
+.met .v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.met .u{font-size:10px;color:var(--dim);font-weight:400}
+.met .x{margin-left:auto;font-size:10.5px;color:var(--dim)}
+.gauge{margin-top:11px}
+.gauge .gl{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);margin-bottom:4px}
+.gbar{height:6px;border-radius:4px;background:#111C2E;position:relative;overflow:hidden}
+.gbar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.gbar .m1{position:absolute;top:-2px;bottom:-2px;width:1px;background:rgba(245,158,11,.75)}
+.gbar .m2{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--red)}
+.tags{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+.tag{font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(126,144,172,.1);color:var(--sub);border:1px solid var(--line)}
+.tag.r{background:rgba(239,68,68,.12);color:#FCA5A5;border-color:rgba(239,68,68,.32)}
+.tag.a{background:rgba(245,158,11,.12);color:#FCD34D;border-color:rgba(245,158,11,.32)}
+.lad-ft{margin-top:10px;padding-top:9px;border-top:1px dashed rgba(46,62,90,.5);display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim)}
+
+/* ---------- detail ---------- */
+.dt-hd{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;padding:14px 18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(100deg,var(--panel),var(--bg2) 65%)}
+.dt-no{text-align:center;padding-right:20px;border-right:1px solid var(--line)}
+.dt-no b{font-size:36px;font-weight:600;letter-spacing:1px;font-variant-numeric:tabular-nums;display:block;line-height:1}
+.dt-no span{font-size:11px;color:var(--sub)}
+.dt-mid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.dt-m{line-height:1.25}
+.dt-m .k{font-size:10.5px;color:var(--sub)}
+.dt-m .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.dt-m .v small{font-size:10.5px;color:var(--dim);font-weight:400;margin-left:2px}
+.dt-rt{text-align:right}
+.verdict{display:inline-block;padding:8px 16px;border-radius:9px;font-size:14px;font-weight:600;border:1px solid}
+.v0{color:var(--green);border-color:rgba(34,197,94,.45);background:rgba(34,197,94,.12)}
+.v1{color:var(--amber);border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.12)}
+.v2{color:var(--red);border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.14);animation:pulse 2.1s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.42)}55%{box-shadow:0 0 0 11px rgba(239,68,68,0)}}
+.dt-rt .adv{margin-top:8px;font-size:12px;color:var(--sub);max-width:330px;margin-left:auto}
+
+.dt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.dt-grid2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px}
+canvas{display:block;width:100%}
+.cvbox{position:relative;background:#060A11;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.hud{position:absolute;top:9px;left:11px;font-size:10.5px;color:var(--sub);line-height:1.6;pointer-events:none;text-shadow:0 1px 3px #000}
+.hud b{color:var(--cyan)}
+.vbtns{position:absolute;top:9px;right:9px;display:flex;gap:4px}
+.vbtns button{background:rgba(14,22,38,.85);border:1px solid var(--line2);color:var(--sub);font-size:10.5px;padding:3px 9px;border-radius:5px;cursor:pointer;font-family:inherit}
+.vbtns button:hover{color:#fff;border-color:var(--cyan)}
+.pclabel{position:absolute;bottom:9px;left:11px;font-size:10.5px;color:var(--dim)}
+
+.legend{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.lgbar{width:210px;height:9px;border-radius:5px;border:1px solid var(--line2)}
+.lgtx{font-size:10.5px;color:var(--dim)}
+.th-mark{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--sub)}
+.th-mark i{width:13px;height:0;border-top:1px dashed var(--amber);display:inline-block}
+.th-mark.al i{border-top:2px solid var(--red)}
+
+.dlist{display:grid;gap:8px;max-height:268px;overflow-y:auto}
+.ditem{display:flex;gap:9px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(18,28,46,.5);cursor:pointer;transition:.15s}
+.ditem:hover{border-color:var(--cyan);background:rgba(34,211,238,.07)}
+.ditem.on{border-color:var(--cyan);background:rgba(34,211,238,.12)}
+.dnum{width:20px;height:20px;border-radius:5px;flex:none;display:grid;place-items:center;font-size:11px;font-weight:700;background:rgba(239,68,68,.2);color:#FCA5A5}
+.dnum.w{background:rgba(245,158,11,.2);color:#FCD34D}
+.dinfo{flex:1;min-width:0}
+.dinfo b{font-size:12px;display:block}
+.dinfo span{font-size:10.5px;color:var(--dim)}
+.dval{text-align:right;font-variant-numeric:tabular-nums;flex:none}
+.dval b{font-size:14px;font-weight:600;color:#FCA5A5}
+.dval span{display:block;font-size:10px;color:var(--dim)}
+
+.temps{display:grid;gap:10px}
+.tcard{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:rgba(18,28,46,.4)}
+.tcard .th{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:11.5px}
+.tcard .th .n{color:var(--sub)}
+.tcard .th .t{margin-left:auto;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.tcard .bd{display:flex;gap:10px;padding:9px 10px;align-items:center}
+.tcard canvas{width:112px;flex:none;border-radius:5px}
+.tcard .nums{font-size:11px;color:var(--sub);line-height:1.75}
+.tcard .nums b{color:var(--txt);font-variant-numeric:tabular-nums}
+
+/* scan replay */
+.scanbar{margin-top:12px;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:rgba(18,28,46,.45)}
+.sb-top{display:flex;align-items:center;gap:12px;margin-bottom:9px}
+.sb-top .st{font-size:12.5px;font-weight:600}
+.sb-top .pc{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;color:var(--cyan)}
+.sb-track{height:6px;background:#111C2E;border-radius:4px;overflow:hidden}
+.sb-track i{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,var(--cyan),var(--blue));transition:width .1s linear}
+.sb-steps{display:flex;justify-content:space-between;margin-top:8px;gap:4px}
+.sb-step{font-size:10.5px;color:var(--dim);flex:1;text-align:center;padding-top:6px;border-top:2px solid var(--line2)}
+.sb-step.on{color:var(--cyan);border-top-color:var(--cyan)}
+.sb-step.dn{color:var(--sub);border-top-color:var(--blue)}
+.btn{background:linear-gradient(135deg,rgba(34,211,238,.2),rgba(59,130,246,.14));border:1px solid var(--cyan);color:#fff;padding:7px 15px;border-radius:7px;cursor:pointer;font-size:12px;font-family:inherit;transition:.18s}
+.btn:hover{box-shadow:0 0 16px rgba(34,211,238,.3)}
+.btn.gh{background:var(--panel);border-color:var(--line2);color:var(--sub)}
+.btn.gh:hover{color:#fff;border-color:var(--cyan);box-shadow:none}
+.ocrchip{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sub);margin-top:9px}
+.ocrchip b{color:var(--txt);font-size:13px;font-variant-numeric:tabular-nums}
+.ocrchip .cf{color:var(--green)}
+
+/* compare */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cmpbox{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#060A11}
+.cmpbox .ch{padding:7px 11px;font-size:11.5px;color:var(--sub);border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.cmpbox .ch b{color:var(--txt)}
+.cmpbox .ch .r{margin-left:auto;font-variant-numeric:tabular-nums}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#24334D;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hd">
+    <div class="logo">
+      <div class="mark"></div>
+      <div>
+        <h1>钢包智能监测驾驶舱</h1>
+        <p>北营钢铁炼钢二厂 · 红外测温 + 雷达渣线 双模态</p>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi cy"><b id="k1">0</b><span>在役钢包</span></div>
+      <div class="kpi ok"><b id="k2">0</b><span>今日检测</span></div>
+      <div class="kpi wa"><b id="k3">0</b><span>关注</span></div>
+      <div class="kpi dg"><b id="k4">0</b><span>危险</span></div>
+      <div class="kpi dg"><b id="k5">0</b><span>待修</span></div>
+    </div>
+    <div class="devs">
+      <div class="dev"><i class="dot"></i>热像仪 3/3</div>
+      <div class="dev"><i class="dot"></i>雷达 2/2</div>
+      <div class="dev"><i class="dot"></i>OCR 1/1</div>
+      <div class="dev"><i class="dot w"></i>热修位 · 就绪</div>
+    </div>
+    <div class="clock"><b id="clk">--:--:--</b><br><span id="dtx">----</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav>
+    <button class="on" data-v="ov">钢包总览驾驶舱</button>
+    <button data-v="dt">单包检测详情</button>
+    <button data-v="cp">历史对比分析</button>
+    <div class="crumb">当前钢包 <b id="crumb">A05</b> ｜ 基准：新修后首次检测 ｜ 判定标准 v2.1</div>
+  </nav>
+
+  <!-- ========== 总览 ========== -->
+  <section id="v-ov">
+    <div class="ov">
+      <div style="display:grid;gap:14px;align-content:start">
+        <div class="card">
+          <div class="sec-t">风险等级分布<span class="r">共 <span id="tot">16</span> 只</span></div>
+          <div class="pad" id="dist"></div>
+        </div>
+        <div class="card">
+          <div class="sec-t">最新告警<span class="r">实时</span></div>
+          <div class="pad" id="alrms" style="max-height:340px;overflow-y:auto"></div>
+        </div>
+        <div class="card">
+          <div class="sec-t">检测窗口<span class="r">热修位</span></div>
+          <div class="pad">
+            <div style="font-size:11.5px;color:var(--sub);line-height:1.9">
+              上一层检测完成 <b style="color:var(--txt)">00:47</b> 前<br>
+              端到端处理耗时 <b style="color:var(--green)">96s</b> / 限值 120s<br>
+              雷达点云拼接 <b style="color:var(--green)">合格</b> · 覆盖率 99.2%<br>
+              OCR 识别置信度 <b style="color:var(--txt)">97.4%</b>
+            </div>
+            <div class="gbar" style="margin-top:11px"><i style="width:80%;background:linear-gradient(90deg,var(--green),var(--cyan))"></i></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:5px"><span>0s</span><span>120s 限值</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:14px">
+          <div class="sec-t">钢包状态矩阵<span class="r">点击卡片查看该包完整检测详情</span></div>
+          <div class="pad"><div class="ladles" id="ladles"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 详情 ========== -->
+  <section id="v-dt" style="display:none">
+    <div class="dt-hd">
+      <div class="dt-no"><b id="d-no">A05</b><span id="d-sub">120t · 包龄 62 次</span></div>
+      <div class="dt-mid">
+        <div class="dt-m"><div class="k">最大侵蚀深度</div><div class="v" id="d-dep">--<small>mm</small></div></div>
+        <div class="dt-m"><div class="k">剩余耐材厚度</div><div class="v" id="d-rem">--<small>mm</small></div></div>
+        <div class="dt-m"><div class="k">外壁最高温度</div><div class="v" id="d-tmp">--<small>℃</small></div></div>
+        <div class="dt-m"><div class="k">预测剩余寿命</div><div class="v" id="d-life">--<small>次</small></div></div>
+      </div>
+      <div class="dt-rt">
+        <div class="verdict v2" id="d-ver">严重缺陷</div>
+        <div class="adv" id="d-adv"></div>
+      </div>
+    </div>
+
+    <div class="dt-grid">
+      <div class="card">
+        <div class="sec-t">渣线 360° 展开图<span class="r">判读主视图 · 缺陷可点击定位</span></div>
+        <div class="pad">
+          <div class="cvbox"><canvas id="cv-unroll"></canvas>
+            <div class="hud">X 轴：方位角 0°~360°　Y 轴：渣线轴向高度<br>色标：侵蚀深度（相对基准面法向距离）</div>
+          </div>
+          <div class="legend">
+            <span class="lgtx">0</span><canvas class="lgbar" id="lg-unroll"></canvas><span class="lgtx">200mm</span>
+            <span class="th-mark"><i></i>一级预警 80mm</span>
+            <span class="th-mark al"><i></i>二级报警 160mm</span>
+            <span class="lgtx" style="margin-left:auto">缺陷编号 <b style="color:#FCA5A5">●</b> 与右侧清单联动</span>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:9px;font-size:10.5px;color:var(--dim);flex-wrap:wrap">
+            <span>区域基准：<b style="color:var(--sub)">新修后首次检测（2026-07-12）</b></span>
+            <span>点云密度：30k 点</span>
+            <span>重复精度 ±5mm</span>
+            <span id="unroll-max"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sec-t">渣线三维点云<span class="r">可拖拽旋转 · 深度已放大 3 倍显示</span></div>
+        <div class="pad">
+          <div class="cvbox" id="pcbox"><canvas id="cv-pc"></canvas>
+            <div class="hud">深度色标 · 内壁视角<br><b id="pc-prog">360° 全周已重建</b></div>
+            <div class="vbtns">
+              <button data-view="iso">等轴测</button><button data-view="top">俯视</button><button data-view="front">正视</button>
+            </div>
+            <div class="pclabel">2 台 RH-LR1540 · 各覆盖 180° · 配准拼接</div>
+          </div>
+          <div class="scanbar">
+            <div class="sb-top">
+              <button class="btn" id="btn-replay">重放本次扫描</button>
+              <span class="st" id="sb-st">扫描已完成</span>
+              <span class="pc" id="sb-pc">100%</span>
+            </div>
+            <div class="sb-track"><i id="sb-i" style="width:100%"></i></div>
+            <div class="sb-steps">
+              <div class="sb-step dn">等待 PLC 信号</div>
+              <div class="sb-step dn">雷达扫描</div>
+              <div class="sb-step dn">点云拼接</div>
+              <div class="sb-step dn">深度计算</div>
+              <div class="sb-step dn">缺陷判定</div>
+            </div>
+            <div class="ocrchip">OCR 包号识别 <b id="sb-ocr">A05</b> <span class="cf" id="sb-cf">置信度 97.4%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dt-grid2">
+      <div class="card">
+        <div class="sec-t">缺陷清单<span class="r">规则引擎自动判定</span></div>
+        <div class="pad"><div class="dlist" id="dlist"></div></div>
+      </div>
+      <div class="card">
+        <div class="sec-t">红外测温 · 三路测点<span class="r">RH-IR640 ×3</span></div>
+        <div class="pad"><div class="temps" id="temps"></div></div>
+      </div>
+      <div class="card">
+        <div class="sec-t">深度与温度趋势<span class="r">X 轴：使用次数（包龄）</span></div>
+        <div class="pad"><div class="cvbox"><canvas id="cv-trend"></canvas></div>
+          <div class="legend">
+            <span class="lgtx" style="color:var(--amber)">━ 最大侵蚀深度</span>
+            <span class="lgtx" style="color:var(--cyan)">━ 外壁最高温</span>
+            <span class="th-mark" style="margin-left:auto"><i></i>预警</span>
+            <span class="th-mark al"><i></i>报警</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 对比 ========== -->
+  <section id="v-cp" style="display:none">
+    <div class="card" style="margin-bottom:14px">
+      <div class="sec-t">多时相展开图对比<span class="r">差值小于 2×重复精度（10mm）的区域已置灰，不做过度解读</span></div>
+      <div class="pad">
+        <div class="cmp">
+          <div class="cmpbox">
+            <div class="ch"><b>基准时相</b> 包龄 46 次<span class="r" id="cp-t1">2026-08-02</span></div>
+            <canvas id="cv-c1"></canvas>
+          </div>
+          <div class="cmpbox">
+            <div class="ch"><b>当前时相</b> 包龄 <span id="cp-n">62</span> 次<span class="r" id="cp-t2">2026-09-15</span></div>
+            <canvas id="cv-c2"></canvas>
+          </div>
+        </div>
+        <div class="cmpbox" style="margin-top:14px">
+          <div class="ch"><b>差值图</b> 当前 − 基准<span class="r" id="cp-rate">平均侵蚀速率 2.1 mm/次</span></div>
+          <canvas id="cv-diff"></canvas>
+        </div>
+        <div class="legend">
+          <span class="lgtx">−40mm 回补</span><canvas class="lgbar" id="lg-diff"></canvas><span class="lgtx">+80mm 新增侵蚀</span>
+          <span class="lgtx" style="margin-left:auto">灰 = 无显著变化（&lt;10mm）</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec-t">区域划分分析<span class="r">按圆周方向分区统计，识别不均匀磨损</span></div>
+      <div class="pad"><div id="zonetb"></div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ============ 基础工具 ============ */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=mulberry32(20260916);
+const rr=(a,b)=>a+R()*(b-a);
+const ri=(a,b)=>Math.floor(rr(a,b+1));
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const TAU=Math.PI*2;
+const D2R=Math.PI/180;
+function setup(cv,w,h){w=Math.max(1,Math.round(w));h=Math.max(1,Math.round(h));
+  const d=window.devicePixelRatio||1;cv.width=w*d;cv.height=h*d;cv.style.height=h+'px';
+  const x=cv.getContext('2d');x.setTransform(d,0,0,d,0,0);cv._w=w;cv._h=h;cv._x=x;return x}
+function lerp(a,b,t){return a+(b-a)*t}
+function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
+function ramp(stops,t){t=clamp(t,0,1);for(let i=0;i<stops.length-1;i++){const a=stops[i],b=stops[i+1];if(t>=a[0]&&t<=b[0]){const k=(t-a[0])/((b[0]-a[0])||1);const c1=hex2rgb(a[1]),c2=hex2rgb(b[1]);return`rgb(${Math.round(lerp(c1[0],c2[0],k))},${Math.round(lerp(c1[1],c2[1],k))},${Math.round(lerp(c1[2],c2[2],k))}`}}return stops[stops.length-1][1]}
+
+/* 侵蚀深度色阶：绿(健康) → 黄 → 橙 → 红(报警) → 暗红 */
+const DEPTH_RAMP=[[0,'#0E5C3A'],[0.18,'#16A34A'],[0.34,'#84CC16'],[0.5,'#EAB308'],[0.68,'#F97316'],[0.86,'#EF4444'],[1,'#8B1414']];
+const dcolor=mm=>ramp(DEPTH_RAMP,mm/160);
+/* 温度 ironbow */
+const T_RAMP=[[0,'#05001E'],[0.16,'#3B0A6B'],[0.36,'#9C1B6E'],[0.55,'#DC3F1E'],[0.74,'#F59E0B'],[0.9,'#FFE066'],[1,'#FFFFFF']];
+const tcolor=v=>ramp(T_RAMP,clamp((v-180)/260,0,1));
+/* 差值色阶 */
+const D_RAMP=[[0,'#1E6FD9'],[0.35,'#3E5B7A'],[0.5,'#3A4252'],[0.65,'#8A5B08'],[1,'#EF4444']];
+const diffcolor=mm=>ramp(D_RAMP,(mm+40)/120);
+
+/* ============ 业务常量 ============ */
+const DESIGN=200, W1=80, W2=160;          // 设计厚度 / 一级预警 / 二级报警 (mm)
+const SLAG_H=1.2;                          // 渣线带高度 m
+const R0=1.5;                              // 内半径 m
+
+/* ============ 模拟数据 ============ */
+const PROFILE=[
+ {no:'A01',p:'normal'},{no:'A02',p:'normal'},{no:'A03',p:'watch'}, {no:'A04',p:'normal'},
+ {no:'A05',p:'danger'},{no:'A06',p:'normal'},{no:'A07',p:'watch'}, {no:'A08',p:'normal'},
+ {no:'B01',p:'repair'},{no:'B02',p:'normal'},{no:'B03',p:'watch'},{no:'B04',p:'normal'},
+ {no:'B05',p:'danger'},{no:'B06',p:'normal'},{no:'B07',p:'repair'},{no:'B08',p:'normal'}
+];
+const ZONES=[[330,30,'出钢口区域'],[60,120,'A侧耳轴区'],[120,240,'B侧普通区'],[240,300,'A侧普通区'],[300,330,''],];
+
+function mkPits(pf,seed){
+  const r=mulberry32(seed*7919); const n=pf==='normal'?ri(1,2):pf==='watch'?ri(2,3):ri(3,4);
+  const out=[];
+  for(let i=0;i<n;i++){
+    const amp = pf==='normal'? rr(12,26) : pf==='watch'? rr(28,50) : pf==='danger'? rr(40,52) : rr(38,50);
+    out.push({th:r()*TAU, yn:rr(.28,.72), amp, sa:rr(.16,.42), sy:rr(.14,.3)});
+  }
+  return out;
+}
+const LADLES=PROFILE.map((pf,i)=>{
+  const seed=i+3; const r=mulberry32(seed*104729);
+  const used=ri(18,96);
+  const base = pf.p==='normal'? rr(24,48) : pf.p==='watch'? rr(70,100) : pf.p==='danger'? rr(122,140) : rr(130,146);
+  const pits=mkPits(pf.p,seed);
+  let max=base; pits.forEach(p=>max=Math.max(max,base+p.amp));
+  max=Math.min(max,195);
+  const avg=max*(0.52+r()*0.14);
+  const remain=DESIGN-max;
+  // 温度
+  const tbase = pf.p==='normal'? rr(206,268) : pf.p==='watch'? rr(268,332) : rr(330,392);
+  const t1=Math.round(tbase+rr(-14,26)), t2=Math.round(tbase+rr(-22,14)), t3=Math.round(tbase+rr(-30,4));
+  const tmax=Math.max(t1,t2,t3), tavg=Math.round((t1+t2+t3)/3 - rr(18,34));
+  // 缺陷
+  const defs=[]; let lv = max>=W2?2 : (max>=W1||tmax>=330)?1:0;
+  if(max>=W2) defs.push({t:'depth',a:pits[0].th/D2R,h:(.15+pits[0].yn*.9).toFixed(2),v:max,lv:2});
+  else if(max>=W1) defs.push({t:'depth',a:pits[0].th/D2R,h:(.15+pits[0].yn*.9).toFixed(2),v:max,lv:1});
+  const pit=Math.max(...pits.map(p=>p.amp));
+  if(pit>=46) defs.push({t:'pit',a:pits[pits.length-1].th/D2R,h:(.15+pits[pits.length-1].th*0+pits[pits.length-1].yn*.9+0.15).toFixed(2),v:pit,lv:pit>=62?2:1});
+  const rate=(max/Math.max(used,1))*(pf.p==='normal'?1:pf.p==='watch'?1.5:2.3);
+  if(rate>2.4) defs.push({t:'rate',a:'-',h:'-',v:rate,lv:1});
+  const area=clamp((max-W1)/120*100*(pf.p==='normal'?.35:1),0,96);
+  if(area>34) defs.push({t:'area',a:'-',h:'-',v:area,lv:area>55?2:1});
+  if(defs.length)lv=Math.max(lv,Math.max.apply(null,defs.map(d=>d.lv)));
+  const state = pf.p==='repair'?'待修' : (pf.p==='danger'?'在线运行':'在线运行');
+  const risk = Math.round(clamp(Math.max(max/W2*72, (tmax-180)/220*72) + (pf.p==='normal'?rr(0,6):rr(4,12)),5,99));
+  const lifeLeft = Math.max(1, Math.round((W2-max)/Math.max(rate,.6)));
+  const verdict = lv===2?'严重缺陷':lv===1?'轻微缺陷':'无缺陷';
+  const advice = lv===2
+    ? (max>=W2?'渣线剩余厚度已低于安全限值，建议立即下线大修，禁止继续周转。':'多项指标同时超限，建议本次热修重点挖补并缩短检测周期。')
+    : lv===1 ? '已触发一级预警，建议本次热修对该区域补浇，并将检测周期缩短至每 5 次一次。'
+    : '各项指标正常，按常规周期继续使用，下次热修时复检。';
+  const ocr = [97.4,98.1,95.6,99.0,96.2,94.8,97.9,93.5,98.6,96.9,95.1,97.2,94.2,98.3,96.4,95.8][i];
+  return {no:pf.no, cap:120, used, state, lv, risk, baseDepth:base, max, avg, remain, pits, defs,
+    t1,t2,t3,tmax,tavg, ocr, lifeLeft, verdict, advice, seed,
+    lastScan:`2026-09-${String(10+(i%5)).padStart(2,'0')} ${String(6+(i%12)).padStart(2,'0')}:${String(11+i*3%50).padStart(2,'0')}`,
+    area, rate};
+});
+function field(L,th,yn){
+  let d=L.baseDepth*(0.55+0.45*Math.sin(Math.PI*clamp(yn,0,1)));
+  for(const p of L.pits){
+    let da=th-p.th; while(da>Math.PI)da-=TAU; while(da<-Math.PI)da+=TAU;
+    const dy=(yn-p.yn)*1.25;
+    d+=p.amp*Math.exp(-((da/p.sa)**2+(dy/p.sy)**2));
+  }
+  d+=5*Math.sin(th*3+L.seed)+3.5*Math.sin(th*7.3+yn*5+L.seed*2);
+  return Math.max(0,Math.min(d,199));
+}
+
+/* ============ 顶部 KPI / 时钟 ============ */
+function animateNum(id,to){const el=document.getElementById(id);const t0=performance.now();const dur=900;
+  (function step(t){const k=clamp((t-t0)/dur,0,1);const e=1-Math.pow(1-k,3);el.textContent=Math.round(to*e);if(k<1)requestAnimationFrame(step)})(t0)}
+const nWatch=LADLES.filter(l=>l.lv===1).length, nDg=LADLES.filter(l=>l.lv===2).length;
+animateNum('k1',LADLES.length);animateNum('k2',23);animateNum('k3',nWatch);animateNum('k4',nDg);animateNum('k5',3);
+document.getElementById('tot').textContent=LADLES.length;
+function tick(){const d=new Date();const p=n=>String(n).padStart(2,'0');
+  document.getElementById('clk').textContent=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  document.getElementById('dtx').textContent=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} 星期${'日一二三四五六'[d.getDay()]}`}
+tick();setInterval(tick,1000);
+
+/* ============ 风险分布 ============ */
+(function(){
+  const c=[LADLES.filter(l=>l.lv===0).length,LADLES.filter(l=>l.lv===1).length,LADLES.filter(l=>l.lv===2).length];
+  const nm=['正常','关注','危险'],col=['#22C55E','#F59E0B','#EF4444'];
+  document.getElementById('dist').innerHTML=c.map((v,i)=>
+   `<div class="stat-row"><span class="nm">${nm[i]}</span><span class="bar"><i style="width:${v/LADLES.length*100}%;background:${col[i]}"></i></span><span class="vl" style="color:${col[i]}">${v}</span></div>`).join('')
+   +`<div class="stat-row" style="margin-top:6px"><span class="nm">待修</span><span class="bar"><i style="width:${3/16*100}%;background:#8B5CF6"></i></span><span class="vl" style="color:#A78BFA">3</span></div>`;
+})();
+
+/* ============ 告警列表 ============ */
+(function(){
+  const al=LADLES.filter(l=>l.lv>0).sort((a,b)=>b.risk-a.risk).slice(0,8).map(l=>{
+    const d=l.defs[0]||{t:'depth',v:l.max,a:0,h:0,lv:l.lv};
+    const nm={depth:'侵蚀深度超限',pit:'局部异常凹陷',rate:'侵蚀速率异常',area:'超标面积占比过高'}[d.t];
+    const col=d.lv===2?'rgba(239,68,68,.2);color:#FCA5A5':'rgba(245,158,11,.2);color:#FCD34D';
+    return `<div class="alarm" data-no="${l.no}">
+      <div class="al-ic" style="background:${col}">${d.lv===2?'危':'警'}</div>
+      <div class="al-t"><b>${l.no} 包 · ${nm}</b>
+      <span class="al-s">最大 ${l.max.toFixed(0)}mm ／ 外壁 ${l.tmax}℃ ／ ${l.lastScan}</span></div></div>`}).join('');
+  document.getElementById('alrms').innerHTML=al;
+  document.querySelectorAll('.alarm').forEach(e=>e.onclick=()=>openLadle(e.dataset.no));
+})();
+
+/* ============ 环形厚度剖面 ============ */
+function drawCompass(cv,L){
+  const S=112,x=setup(cv,S,S);x.clearRect(0,0,S,S);
+  const cx=S/2,cy=S/2,Ro=50,Ri=20,N=120;
+  x.save();
+  for(let i=0;i<N;i++){
+    const a1=i/N*TAU-Math.PI/2,a2=(i+1.02)/N*TAU-Math.PI/2;
+    const th=(i+0.5)/N*TAU; let yn=0.5;
+    let mx=0;for(let k=0;k<9;k++){const v=field(L,th,k/8);if(v>mx)mx=v;}
+    const rem=clamp(1-mx/DESIGN,0.06,1);
+    const w=rem*30;
+    x.beginPath();
+    x.arc(cx,cy,Ro,a1,a2);
+    x.arc(cx,cy,Ro-w,a2,a1,true);
+    x.closePath();
+    x.fillStyle=dcolor(mx); x.globalAlpha=0.92; x.fill(); x.globalAlpha=1;
+  }
+  x.beginPath();x.arc(cx,cy,Ro,0,TAU);x.strokeStyle='rgba(126,144,172,.35)';x.lineWidth=1;x.setLineDash([2,3]);x.stroke();x.setLineDash([]);
+  x.beginPath();x.arc(cx,cy,Ro-30,0,TAU);x.strokeStyle='rgba(126,144,172,.18)';x.stroke();
+  // 最大深度指针
+  let best=-1,ba=0;for(let i=0;i<360;i+=2){let mx=0;for(let k=0;k<7;k++)mx=Math.max(mx,field(L,i*D2R,k/6));if(mx>best){best=mx;ba=i}}
+  const ar=ba*D2R-Math.PI/2;
+  x.beginPath();x.moveTo(cx+Math.cos(ar)*(Ro+1),cy+Math.sin(ar)*(Ro+1));x.lineTo(cx+Math.cos(ar)*(Ro+7),cy+Math.sin(ar)*(Ro+7));
+  x.strokeStyle='#EF4444';x.lineWidth=2;x.stroke();
+  x.beginPath();x.arc(cx+Math.cos(ar)*(Ro+9),cy+Math.sin(ar)*(Ro+9),2.2,0,TAU);x.fillStyle='#EF4444';x.fill();
+  x.restore();
+}
+
+/* ============ 钢包卡片 ============ */
+function badge(l){const m={0:['b0','正常'],1:['b1','关注'],2:['b2','危险']}[l.lv];
+  return `<span class="badge ${m[0]}">${m[1]}</span>`+(l.state==='待修'?'<span class="badge bn" style="color:#A78BFA;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.12)">待修</span>':'')}
+function cardHTML(L){
+  const rc=L.lv===0?'var(--green)':L.lv===1?'var(--amber)':'var(--red)';
+  const tags=L.defs.slice(0,3).map(d=>{
+    const nm={depth:'深度超限',pit:'局部凹陷',rate:'速率异常',area:'面积占比'}[d.t];
+    return `<span class="tag ${d.lv===2?'r':'a'}">${nm}</span>`}).join('')||'<span class="tag">无缺陷</span>';
+  return `<div class="lad lv${L.lv}" data-no="${L.no}">
+    <div class="lad-hd">
+      <div><span class="lad-no">${L.no}<small>包 · ${L.cap}t</small></span></div>
+      ${badge(L)}
+      <div class="risk"><b style="color:${rc}">${L.risk}</b><span>风险分</span></div>
+    </div>
+    <div class="lad-bd">
+      <div class="compass"><canvas class="cv" width="112" height="112" data-c="${L.no}"></canvas>
+        <div class="mid"><b style="color:${dcolor(L.max)}">${L.remain.toFixed(0)}</b><span>剩余 mm</span></div></div>
+      <div class="mets">
+        <div class="met"><span class="k">最大侵蚀</span><span class="v" style="color:${dcolor(L.max)}">${L.max.toFixed(0)}</span><span class="u">mm</span><span class="x">@ ${L.defs[0]&&L.defs[0].a!=='-'?Math.round(L.defs[0].a)+'°':'—'}</span></div>
+        <div class="met"><span class="k">平均侵蚀</span><span class="v">${L.avg.toFixed(0)}</span><span class="u">mm</span></div>
+        <div class="met"><span class="k">外壁温度</span><span class="v" style="color:${tcolor(L.tmax)}">${L.tmax}</span><span class="u">℃</span><span class="x">${L.t1}/${L.t2}/${L.t3}</span></div>
+        <div class="met"><span class="k">剩余寿命</span><span class="v" style="color:${L.lifeLeft<8?'var(--red)':'var(--txt)'}">${L.lifeLeft}</span><span class="u">次</span><span class="x">包龄 ${L.used}</span></div>
+      </div>
+    </div>
+    <div class="gauge">
+      <div class="gl"><span>侵蚀量 / 设计厚度 ${DESIGN}mm</span><span>${(L.max/DESIGN*100).toFixed(0)}%</span></div>
+      <div class="gbar"><i style="width:${clamp(L.max/DESIGN*100,0,100)}%;background:linear-gradient(90deg,#16A34A,#EAB308,#EF4444)"></i>
+        <span class="m1" style="left:${W1/DESIGN*100}%"></span><span class="m2" style="left:${W2/DESIGN*100}%"></span></div>
+    </div>
+    <div class="tags">${tags}</div>
+    <div class="lad-ft"><span>上次检测 ${L.lastScan}</span><span>OCR ${L.ocr}%</span></div>
+  </div>`;
+}
+document.getElementById('ladles').innerHTML=LADLES.map(cardHTML).join('');
+LADLES.forEach(L=>drawCompass(document.querySelector(`canvas[data-c="${L.no}"]`),L));
+document.querySelectorAll('.lad').forEach(e=>e.onclick=()=>openLadle(e.dataset.no));
+
+/* ============ 展开图 ============ */
+function drawUnroll(cv,L,hi){
+  const W=720,H=210,x=setup(cv,W,H);
+  const BW=4,BH=4;
+  for(let px=0;px<W;px+=BW){
+    const th=px/W*TAU;
+    for(let py=0;py<H;py+=BH){
+      const yn=1-py/H;
+      x.fillStyle=dcolor(field(L,th,yn));
+      x.fillRect(px,py,BW,BH);
+    }
+  }
+  // 扫描线质感
+  x.globalAlpha=.06;x.fillStyle='#000';
+  for(let px=0;px<W;px+=16)x.fillRect(px,0,1,H);
+  x.globalAlpha=1;
+  // 网格
+  x.strokeStyle='rgba(232,240,250,.10)';x.lineWidth=1;
+  for(let a=0;a<=360;a+=45){const px=a/360*W;x.beginPath();x.moveTo(px,0);x.lineTo(px,H);x.stroke()}
+  for(let k=0;k<=4;k++){const py=k/4*H;x.beginPath();x.moveTo(0,py);x.lineTo(W,py);x.stroke()}
+  // 区域标记
+  const zc=['rgba(34,211,238,.16)','rgba(139,92,246,.14)','rgba(126,144,172,.12)','rgba(126,144,172,.12)','rgba(34,211,238,.16)'];
+  [[330,390,'出钢口'],[60,120,'A耳轴'],[240,300,'A普通']].forEach((z,i)=>{
+    const a0=z[0]%360,a1=z[1]%360;
+    x.fillStyle=zc[i]; if(a1>a0){x.fillRect(a0/360*W,0,(a1-a0)/360*W,14)}
+    else{x.fillRect(a0/360*W,0,(360-a0)/360*W,14);x.fillRect(0,0,a1/360*W,14)}
+    x.fillStyle='rgba(232,240,250,.75)';x.font='10px sans-serif';
+    if(a1>a0)x.fillText(z[2],(a0+4)/360*W,10); else x.fillText(z[2],4,10);
+  });
+  // 刻度
+  x.fillStyle='rgba(126,144,172,.9)';x.font='10px sans-serif';
+  for(let a=0;a<=360;a+=45)x.fillText(a+'°',a/360*W+(a===0?3:-12),H-4);
+  ['渣线上沿','','','','渣线下沿'].forEach((s,i)=>{if(s){x.fillText(s,3,26+i*(H-40)/4)}});
+  // 缺陷标注
+  L.defs.forEach((d,i)=>{
+    if(d.a==='-')return;
+    const px=((d.a%360)+360)%360/360*W, py=(1-(parseFloat(d.h)-0.15)/0.9)*H;
+    const on=hi===i;
+    x.strokeStyle=on?'#22D3EE':'#EF4444';x.lineWidth=on?2.4:1.6;
+    x.beginPath();x.arc(px,py,on?13:10,0,TAU);x.stroke();
+    x.fillStyle=on?'rgba(34,211,238,.2)':'rgba(239,68,68,.16)';x.fill();
+    x.fillStyle='#fff';x.font='bold 10px sans-serif';x.textAlign='center';
+    x.fillText(i+1,px,py+3.5);x.textAlign='left';
+  });
+}
+function drawLegendBar(cv,f){const x=setup(cv,210,9);for(let i=0;i<210;i++){x.fillStyle=f(i/210);x.fillRect(i,0,1,9)}}
+drawLegendBar(document.getElementById('lg-unroll'),t=>dcolor(t*200));
+drawLegendBar(document.getElementById('lg-diff'),t=>diffcolor(-40+t*120));
+
+/* ============ 3D 点云 ============ */
+const NTH=190,NY=22;
+let PC={pts:[],rotY:-0.62,rotX:0.52,prog:1,cur:null,drag:false,lx:0,ly:0,auto:true};
+function buildPC(L){
+  const pts=[];
+  for(let i=0;i<NTH;i++){
+    const th=i/NTH*TAU;
+    for(let j=0;j<NY;j++){
+      const yn=j/(NY-1), d=field(L,th,yn);
+      const rr=R0+d/1000*3;              // 深度视觉放大 3 倍
+      pts.push({th,yn,d,x:Math.sin(th)*rr,z:Math.cos(th)*rr,y:(yn-.5)*SLAG_H});
+    }
+  }
+  PC.pts=pts;
+}
+function drawPC(cv,L){
+  const W=cv._w,H=cv._h,x=cv._x;
+  x.fillStyle='#060A11';x.fillRect(0,0,W,H);
+  const cx=W/2,cy=H/2+10,f=5.6,sc=Math.min(W,H)*0.30;
+  const cy_=Math.cos(PC.rotY),sy_=Math.sin(PC.rotY),cx_=Math.cos(PC.rotX),sx_=Math.sin(PC.rotX);
+  const lim=PC.prog*TAU;
+  const arr=[];
+  for(const p of PC.pts){
+    if(p.th>lim)continue;
+    const X=p.x, Z=p.z, Y=p.y;
+    let x1=X*cy_+Z*sy_, z1=-X*sy_+Z*cy_;
+    let y2=Y*cx_-z1*sx_, z2=Y*sx_+z1*cx_;
+    // 内壁背面剔除：法向指向轴心
+    const nx=-Math.sin(p.th)*cy_+ -Math.cos(p.th)*sy_;
+    const nz=Math.sin(p.th)*sy_+ -Math.cos(p.th)*cy_;
+    const ny=0;
+    const ny2=ny*cx_-nz*sx_, nz2=ny*sx_+nz*cx_;
+    const vx=0-x1, vy=0-y2, vz=-f-z2;
+    if(nx*vx+ny2*vy+nz2*vz<=0)continue;
+    const per=f/(f+z2+3.2);
+    arr.push({sx:cx+x1*sc*per, sy:cy-y2*sc*per, z:z2, d:p.d, per});
+  }
+  arr.sort((a,b)=>b.z-a.z);
+  for(const p of arr){
+    const s=Math.max(1.1,2.6*p.per);
+    x.fillStyle=dcolor(p.d);
+    x.globalAlpha=clamp(.55+p.per*.5,0,1);
+    x.beginPath();x.arc(p.sx,p.sy,s,0,TAU);x.fill();
+  }
+  x.globalAlpha=1;
+  // 包口圆环
+  x.strokeStyle='rgba(126,144,172,.5)';x.lineWidth=1.2;x.beginPath();
+  for(let i=0;i<=72;i++){
+    const th=i/72*TAU; if(th>lim&&PC.prog<1)break;
+    const X=Math.sin(th)*(R0+0.06),Z=Math.cos(th)*(R0+0.06),Y=SLAG_H/2;
+    let x1=X*cy_+Z*sy_,z1=-X*sy_+Z*cy_;
+    let y2=Y*cx_-z1*sx_,z2=Y*sx_+z1*cx_;
+    const per=f/(f+z2+3.2);
+    const px=cx+x1*sc*per,py=cy-y2*sc*per;
+    i===0?x.moveTo(px,py):x.lineTo(px,py);
+  }
+  x.stroke();
+  // 扫描扇形指示
+  if(PC.prog<1){
+    const th=lim;
+    const X=Math.sin(th)*(R0+.25),Z=Math.cos(th)*(R0+.25);
+    let x1=X*cy_+Z*sy_,z1=-X*sy_+Z*cy_;
+    let y2=0*cx_-z1*sx_,z2=0*sx_+z1*cx_;
+    const per=f/(f+z2+3.2);
+    x.strokeStyle='rgba(34,211,238,.85)';x.lineWidth=2;
+    x.beginPath();x.moveTo(cx,cy);x.lineTo(cx+x1*sc*per,cy-y2*sc*per);x.stroke();
+  }
+  // 方位刻度
+  x.font='10px sans-serif';x.fillStyle='rgba(126,144,172,.85)';
+  [[0,'0°'],[90,'90°'],[180,'180°'],[270,'270°']].forEach(([a,s])=>{
+    const th=(a-90)*D2R;
+    const X=Math.sin(th)*(R0+.34),Z=Math.cos(th)*(R0+.34),Y=SLAG_H/2+.1;
+    let x1=X*cy_+Z*sy_,z1=-X*sy_+Z*cy_;
+    let y2=Y*cx_-z1*sx_,z2=Y*sx_+z1*cx_;
+    const per=f/(f+z2+3.2);
+    x.fillText(s,cx+x1*sc*per-8,cy-y2*sc*per);
+  });
+}
+
+/* ============ 热像图 ============ */
+function drawThermal(cv,tmax,tavg,seed){
+  const W=112,H=76,x=setup(cv,W,H);
+  const r=mulberry32(seed*7717);
+  const blobs=[];for(let i=0;i<4;i++)blobs.push({x:r()*W,y:H*(.25+r()*.6),r:rr(14,36),a:rr(.35,1),t:rr(.25,1)});
+  for(let px=0;px<W;px+=2)for(let py=0;py<H;py+=2){
+    const grad=1-py/H*0.55;
+    let v=tavg/450*grad;
+    for(const b of blobs){const dd=((px-b.x)**2+(py-b.y)**2)/(b.r*b.r);v+=b.a*b.t*Math.exp(-dd)*0.55}
+    x.fillStyle=tcolor(v*450);x.fillRect(px,py,2,2);
+  }
+  // 包体轮廓
+  x.strokeStyle='rgba(255,255,255,.22)';x.lineWidth=1;
+  x.beginPath();x.moveTo(26,4);x.lineTo(88,4);x.lineTo(80,H-3);x.lineTo(34,H-3);x.closePath();x.stroke();
+  // 最高温标记
+  const hb=blobs.reduce((a,b)=>b.t*b.a>a.t*a.a?b:a);
+  x.strokeStyle='#fff';x.lineWidth=1.2;
+  x.beginPath();x.arc(hb.x,hb.y,7,0,TAU);x.stroke();
+  x.beginPath();x.moveTo(hb.x-10,hb.y);x.lineTo(hb.x-4,hb.y);x.moveTo(hb.x+4,hb.y);x.lineTo(hb.x+10,hb.y);x.stroke();
+  x.fillStyle='#fff';x.font='bold 10px sans-serif';x.fillText(tmax+'℃',Math.min(hb.x+11,W-34),hb.y-6);
+}
+
+/* ============ 趋势图 ============ */
+function drawTrend(cv,L){
+  const W=cv._w,H=cv._h,x=cv._x;
+  x.fillStyle='#060A11';x.fillRect(0,0,W,H);
+  const P={l:38,r:38,t:16,b:24},gw=W-P.l-P.r,gh=H-P.t-P.b;
+  const N=14, xs=[],dep=[],tp=[];
+  const rate=L.max/Math.max(L.used,1)*1.0;
+  for(let i=0;i<N;i++){
+    const u=Math.round(L.used*(i/(N-1)));
+    xs.push(u);
+    const k=i/(N-1);
+    dep.push(L.max*(0.28+0.72*k)*(1+Math.sin(i*1.7+L.seed)*0.03));
+    tp.push(L.tmax*(0.72+0.28*k)+Math.sin(i*2.1+L.seed)*9);
+  }
+  const dmax=210, tmin=180, tmax=430;
+  const px=i=>P.l+gw*i/(N-1);
+  const py=v=>P.t+gh*(1-v/dmax);
+  const ty=v=>P.t+gh*(1-(v-tmin)/(tmax-tmin));
+  // 网格
+  x.strokeStyle='rgba(232,240,250,.07)';x.lineWidth=1;
+  for(let k=0;k<=4;k++){const y=P.t+gh*k/4;x.beginPath();x.moveTo(P.l,y);x.lineTo(W-P.r,y);x.stroke();
+    x.fillStyle='rgba(126,144,172,.8)';x.font='9px sans-serif';x.fillText(Math.round(dmax*(1-k/4)),4,y+3)}
+  // 阈值
+  x.setLineDash([4,3]);
+  x.strokeStyle='rgba(245,158,11,.7)';x.beginPath();x.moveTo(P.l,py(W1));x.lineTo(W-P.r,py(W1));x.stroke();
+  x.strokeStyle='rgba(239,68,68,.85)';x.lineWidth=1.6;x.beginPath();x.moveTo(P.l,py(W2));x.lineTo(W-P.r,py(W2));x.stroke();
+  x.setLineDash([]);
+  // 深度柱
+  for(let i=0;i<N;i++){x.fillStyle='rgba(245,158,11,.16)';x.fillRect(px(i)-6,py(dep[i]),12,P.t+gh-py(dep[i]))}
+  // 深度线
+  x.strokeStyle='#F59E0B';x.lineWidth=2;x.beginPath();
+  dep.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));x.stroke();
+  // 温度线
+  x.strokeStyle='#22D3EE';x.lineWidth=1.6;x.beginPath();
+  tp.forEach((v,i)=>i?x.lineTo(px(i),ty(v)):x.moveTo(px(i),ty(v)));x.stroke();
+  // 末端点
+  x.fillStyle='#F59E0B';x.beginPath();x.arc(px(N-1),py(dep[N-1]),3.5,0,TAU);x.fill();
+  x.fillStyle='#22D3EE';x.beginPath();x.arc(px(N-1),ty(tp[N-1]),3,0,TAU);x.fill();
+  // 轴
+  x.fillStyle='rgba(126,144,172,.85)';x.font='9px sans-serif';
+  for(let i=0;i<N;i+=3){x.textAlign='center';x.fillText(xs[i],px(i),H-8);x.textAlign='left'}
+  x.fillStyle='rgba(126,144,172,.7)';x.fillText('使用次数',W-P.r-8,H-8);
+  [180,430].forEach((v,i)=>{x.fillStyle='rgba(34,211,238,.8)';x.fillText(v+'℃',W-P.r+4,i?P.t+6:P.t+gh)});
+}
+
+/* ============ 差值图 ============ */
+function drawDiff(cv,L){
+  const W=cv._w,H=cv._h,x=cv._x;
+  const BW=6,BH=5;
+  const base=0.72; // 基准时相 = 当前的 72%
+  for(let px=0;px<W;px+=BW){
+    const th=px/W*TAU;
+    for(let py=0;py<H;py+=BH){
+      const yn=1-py/H;
+      const d=field(L,th,yn)*(1-base);
+      x.fillStyle=Math.abs(d)<10?'#3A4252':ramp(D_RAMP,(d+40)/120);
+      x.fillRect(px,py,BW,BH);
+    }
+  }
+  x.strokeStyle='rgba(232,240,250,.10)';
+  for(let a=0;a<=360;a+=45){const px=a/360*W;x.beginPath();x.moveTo(px,0);x.lineTo(px,H);x.stroke()}
+  x.fillStyle='rgba(126,144,172,.9)';x.font='10px sans-serif';
+  for(let a=0;a<=360;a+=45)x.fillText(a+'°',a/360*W+(a===0?3:-12),H-5);
+}
+function drawMini(cv,L,k){
+  const W=cv._w,H=cv._h,x=cv._x;const BW=4;
+  for(let px=0;px<W;px+=BW){const th=px/W*TAU;
+    for(let py=0;py<H;py+=BW){const yn=1-py/H;x.fillStyle=dcolor(field(L,th,yn)*k);x.fillRect(px,py,BW,BW)}}
+}
+
+/* ============ 详情渲染 ============ */
+let CUR=LADLES[4];
+const DEFNAME={depth:'侵蚀深度超限',pit:'局部异常凹陷',rate:'侵蚀速率异常（加速侵蚀）',area:'超标面积占比过高'};
+function openLadle(no){
+  const L=LADLES.find(l=>l.no===no)||LADLES[0];
+  CUR=L;document.getElementById('crumb').textContent=L.no;
+  document.querySelectorAll('.lad').forEach(e=>e.classList.toggle('sel',e.dataset.no===L.no));
+  renderDetail(L);
+  switchView('dt');
+}
+function renderDetail(L){
+  document.getElementById('d-no').textContent=L.no;
+  document.getElementById('d-sub').textContent=`${L.cap}t · 包龄 ${L.used} 次 · ${L.state}`;
+  document.getElementById('d-dep').innerHTML=L.max.toFixed(0)+'<small>mm</small>';
+  document.getElementById('d-dep').style.color=dcolor(L.max);
+  document.getElementById('d-rem').innerHTML=L.remain.toFixed(0)+'<small>mm</small>';
+  document.getElementById('d-rem').style.color=L.remain<40?'var(--red)':L.remain<120?'var(--amber)':'var(--green)';
+  document.getElementById('d-tmp').innerHTML=L.tmax+'<small>℃</small>';
+  document.getElementById('d-tmp').style.color=tcolor(L.tmax);
+  document.getElementById('d-life').innerHTML=L.lifeLeft+'<small>次</small>';
+  document.getElementById('d-life').style.color=L.lifeLeft<8?'var(--red)':'var(--txt)';
+  const v=document.getElementById('d-ver');
+  v.textContent=L.verdict;v.className='verdict v'+L.lv;
+  document.getElementById('d-adv').textContent=L.advice;
+  document.getElementById('unroll-max').innerHTML=`最大侵蚀 <b style="color:#FCA5A5">${L.max.toFixed(0)}mm</b> ／ 平均 ${L.avg.toFixed(0)}mm ／ 标准差 ${(L.max*0.18).toFixed(1)}`;
+  document.getElementById('sb-ocr').textContent=L.no;
+  document.getElementById('sb-cf').textContent='置信度 '+L.ocr+'%';
+
+  // 展开图
+  const cu=document.getElementById('cv-unroll');cu.dataset.hr=1;setup(cu,720,210);drawUnroll(cu,L,-1);
+  // 点云
+  buildPC(L);PC.prog=1;PC.rotY=-0.62;PC.rotX=0.52;PC.cur=L;
+  const cp=document.getElementById('cv-pc');const box=document.getElementById('pcbox');
+  setup(cp,box.clientWidth-2,286);drawPC(cp,L);
+  document.getElementById('pc-prog').textContent='360° 全周已重建';
+  // 缺陷
+  document.getElementById('dlist').innerHTML=L.defs.length?L.defs.map((d,i)=>
+    `<div class="ditem" data-i="${i}">
+      <div class="dnum ${d.lv===2?'':'w'}">${i+1}</div>
+      <div class="dinfo"><b>${DEFNAME[d.t]}</b>
+        <span>${d.a==='-'?'全周统计':`@ ${Math.round(d.a)}° 方位 · 高度 ${d.h} m`}　·　${d.lv===2?'二级报警':'一级预警'}</span></div>
+      <div class="dval"><b>${d.t==='area'?d.v.toFixed(0)+'%':d.t==='rate'?d.v.toFixed(1)+'mm/次':d.v.toFixed(0)+'mm'}</b>
+        <span>${d.t==='area'?'超标面积':d.t==='rate'?'侵蚀速率':'深度'}</span></div>
+    </div>`).join(''):'<div class="dim" style="padding:16px;text-align:center">本次检测未触发任何缺陷规则，各项指标均在正常范围内。</div>';
+  document.querySelectorAll('.ditem').forEach(e=>e.onclick=()=>{
+    document.querySelectorAll('.ditem').forEach(n=>n.classList.remove('on'));
+    e.classList.add('on');
+    const i=+e.dataset.i;drawUnroll(cu,L,i);
+    const d=L.defs[i];
+    if(d.a!=='-'){PC.rotY=-d.a*D2R-Math.PI/2;PC.auto=false;drawPC(cp,L);}
+  });
+  // 温度
+  const tarr=[['1 号热像仪 · 转炉出钢区',L.t1,1],['2 号热像仪 · 连铸浇铸区',L.t2,2],['3 号热像仪 · 钢包等待区',L.t3,3]];
+  document.getElementById('temps').innerHTML=tarr.map(([n,t,i])=>
+    `<div class="tcard"><div class="th"><span class="n">${n}</span>
+      <span class="t" style="color:${tcolor(t)}">${t}<span style="font-size:10px;color:var(--dim)">℃</span></span></div>
+      <div class="bd"><canvas data-t="${L.no}-${i}"></canvas>
+        <div class="nums">平均 <b>${Math.round(t-rr(22,40))}</b> ℃<br>区域温差 <b>${Math.round(rr(8,26))}</b> ℃<br>
+        超温阈值 <b>380</b> ℃　<span style="color:${t>=380?'var(--red)':'var(--green)'}">${t>=380?'超限':'正常'}</span></div></div></div>`).join('');
+  tarr.forEach(([n,t,i])=>drawThermal(document.querySelector(`canvas[data-t="${L.no}-${i}"]`),t,Math.round(t-30),L.seed*13+i));
+  // 趋势
+  const ct=document.getElementById('cv-trend');setup(ct,ct.parentElement.clientWidth-2,190);drawTrend(ct,L);
+  // 对比
+  document.getElementById('cp-n').textContent=L.used;
+  const c1=document.getElementById('cv-c1'),c2=document.getElementById('cv-c2'),cd=document.getElementById('cv-diff');
+  const w1=c1.parentElement.clientWidth-2;
+  setup(c1,w1,190);setup(c2,w1,190);setup(cd,cd.parentElement.clientWidth-2,190);
+  drawMini(c1,L,0.72);drawMini(c2,L,1);drawDiff(cd,L);
+  document.getElementById('cp-rate').textContent=`平均侵蚀速率 ${L.rate.toFixed(1)} mm/次`;
+  // 区域表
+  const zn=[['出钢口区域',330,390],['A 侧耳轴区',60,120],['B 侧普通区',120,240],['A 侧普通区',240,300]];
+  document.getElementById('zonetb').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+   '<tr style="color:var(--sub);font-size:11px"><th style="text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)">区域</th>'+
+   '<th style="padding:7px 8px;border-bottom:1px solid var(--line)">最大深度</th><th style="padding:7px 8px;border-bottom:1px solid var(--line)">平均深度</th>'+
+   '<th style="padding:7px 8px;border-bottom:1px solid var(--line)">超标面积占比</th><th style="padding:7px 8px;border-bottom:1px solid var(--line)">本周期增量</th><th style="padding:7px 8px;border-bottom:1px solid var(--line)">判定</th></tr>'+
+   zn.map(([nm,a0,a1])=>{
+     let mx=0,s=0,n=0;
+     for(let a=a0;a<a1;a+=3)for(let k=0;k<8;k++){const v=field(L,a*D2R,k/7);mx=Math.max(mx,v);s+=v;n++}
+     const av=s/n, ar=clamp((mx-W1)/120*100,0,100), inc=av*0.28;
+     const lv=mx>=W2?2:mx>=W1?1:0;
+     return `<tr><td style="padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4)">${nm}　<span class="dim">${a0}°~${a1%360}°</span></td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4);color:${dcolor(mx)};font-weight:600">${mx.toFixed(0)} mm</td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4)">${av.toFixed(0)} mm</td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4)">${ar.toFixed(0)} %</td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4)">+${inc.toFixed(1)} mm</td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid rgba(46,62,90,.4)"><span class="badge b${lv}">${['正常','关注','危险'][lv]}</span></td></tr>`}).join('')+'</table>';
+}
+
+/* ============ 视图切换 ============ */
+function switchView(v){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  ['ov','dt','cp'].forEach(k=>document.getElementById('v-'+k).style.display=k===v?'':'none');
+  if(v==='dt'&&CUR){const cp=document.getElementById('cv-pc');if(cp._w!==document.getElementById('pcbox').clientWidth-2){
+    setup(cp,document.getElementById('pcbox').clientWidth-2,286);drawPC(cp,CUR)}}
+  if(v==='cp'&&CUR){
+    const c1=document.getElementById('cv-c1'),c2=document.getElementById('cv-c2');
+    setup(c1,c1.parentElement.clientWidth-2,190);setup(c2,c2.parentElement.clientWidth-2,190);
+    drawMini(c1,CUR,0.72);drawMini(c2,CUR,1);
+    const cd=document.getElementById('cv-diff');setup(cd,cd.parentElement.clientWidth-2,190);drawDiff(cd,CUR);
+  }
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.v));
+
+/* ============ 点云交互 ============ */
+(function(){
+  const cv=document.getElementById('cv-pc');
+  cv.onmousedown=e=>{PC.drag=true;PC.auto=false;PC.lx=e.clientX;PC.ly=e.clientY;cv.style.cursor='grabbing'};
+  window.addEventListener('mouseup',()=>{PC.drag=false;cv.style.cursor='grab'});
+  window.addEventListener('mousemove',e=>{
+    if(!PC.drag)return;
+    PC.rotY+=(e.clientX-PC.lx)*0.008;
+    PC.rotX=clamp(PC.rotX+(e.clientY-PC.ly)*0.006,-0.2,1.25);
+    PC.lx=e.clientX;PC.ly=e.clientY;drawPC(cv,CUR);
+  });
+  cv.style.cursor='grab';
+  document.querySelectorAll('.vbtns button').forEach(b=>b.onclick=()=>{
+    PC.auto=false;
+    const m={iso:[-0.62,0.52],top:[-0.62,1.22],front:[0,0.16]}[b.dataset.view];
+    PC.rotY=m[0];PC.rotX=m[1];drawPC(cv,CUR);
+  });
+  // 空闲自转
+  setInterval(()=>{if(PC.auto&&document.getElementById('v-dt').style.display!=='none'&&PC.prog>=1){PC.rotY+=0.006;drawPC(cv,CUR)}},42);
+})();
+
+/* ============ 扫描回放 ============ */
+document.getElementById('btn-replay').onclick=function(){
+  if(this.dataset.run)return;this.dataset.run=1;PC.auto=false;
+  const L=CUR, cv=document.getElementById('cv-pc');
+  const steps=['等待 PLC 位置信号','雷达扫描中','点云配准拼接','渣线深度计算','缺陷判定输出'];
+  const el=document.querySelectorAll('.sb-step');
+  el.forEach(s=>s.className='sb-step');
+  const t0=performance.now(),DUR=6800;
+  document.getElementById('sb-ocr').textContent='--';
+  document.getElementById('sb-cf').textContent='识别中…';
+  (function step(t){
+    const k=clamp((t-t0)/DUR,0,1);
+    const pc=document.getElementById('sb-pc'), bar=document.getElementById('sb-i');
+    pc.textContent=Math.round(k*100)+'%';bar.style.width=(k*100)+'%';
+    let st,si;
+    if(k<0.08){st=steps[0];si=0;PC.prog=0}
+    else if(k<0.68){st='雷达扫描中 · '+Math.round((k-0.08)/0.6*360)+'° / 360°';si=1;PC.prog=(k-0.08)/0.6}
+    else if(k<0.80){st=steps[2];si=2;PC.prog=1}
+    else if(k<0.91){st=steps[3];si=3;PC.prog=1}
+    else{st=steps[4];si=4;PC.prog=1}
+    document.getElementById('sb-st').textContent=st;
+    for(let i=0;i<el.length;i++){el[i].className='sb-step'+(i<si?' dn':i===si?' on':'')}
+    if(k>0.14&&document.getElementById('sb-ocr').textContent==='--'){
+      document.getElementById('sb-ocr').textContent=L.no;
+      document.getElementById('sb-cf').textContent='置信度 '+L.ocr+'%';
+    }
+    document.getElementById('pc-prog').textContent=k<0.68?`扫描中 ${Math.round(PC.prog*360)}°`:'360° 全周已重建';
+    drawPC(cv,L);
+    if(k<1)requestAnimationFrame(step);
+    else{PC.prog=1;drawPC(cv,L);document.getElementById('sb-st').textContent='扫描已完成 · 耗时 96s';
+      el.forEach(s=>s.className='sb-step dn');document.getElementById('btn-replay').dataset.run='';PC.auto=true}
+  })(t0);
+};
+
+/* ============ 初始化 ============ */
+window.addEventListener('load',()=>{
+  document.querySelector('.lad[data-no="A05"]').classList.add('sel');
+  const cu=document.getElementById('cv-unroll');setup(cu,720,210);
+  renderDetail(CUR);
+  document.getElementById('v-dt').style.display='none';
+});
+window.addEventListener('resize',()=>{
+  if(!CUR)return;
+  const cp=document.getElementById('cv-pc');
+  if(document.getElementById('v-dt').style.display!=='none'){setup(cp,document.getElementById('pcbox').clientWidth-2,286);drawPC(cp,CUR)}
+});
+</script>
+</body>
+</html>
