@@ -1,6 +1,7 @@
 'use client';
 
 import { BookOpen } from 'lucide-react';
+import { productVendorName } from '@/lib/product-mode';
 import styles from './LadleManagement.module.css';
 import manualStyles from './LadleUserManual.module.css';
 
@@ -15,7 +16,7 @@ const sections: ManualSection[] = [
   {
     id: 'overview',
     title: '系统概述',
-    intro: '钢包监测系统由西安豪克电子有限公司提供，用于热修位钢包的红外测温与包号识别，帮助现场人员实时掌握钢包状态、查询历史数据并处理报警。',
+    intro: `钢包监测系统由${productVendorName}提供，用于热修位钢包的红外测温与包号识别，帮助现场人员实时掌握钢包状态、查询历史数据并处理报警。`,
     items: [
       { label: '适用场景', desc: '热修位钢包监测现场：四路红外测温、包号识别、历史查询与报警处理。' },
       { label: '主要能力', desc: '四路红外实时测温（设备 ID 由现场实时推送，可动态变更）、包号识别展示、历史数据查询与导出、温度曲线分析、报警处理、钢包档案管理。' },
@@ -84,10 +85,10 @@ const sections: ManualSection[] = [
     title: '钢包管理',
     intro: '维护钢包基础档案，包括新建、编辑、删除及按状态筛选。',
     items: [
-      { label: '档案列表', desc: '表格展示在册钢包：包号、状态、累计使用次数、最近温度、上次检修时间等；选中可查看详情。' },
+      { label: '档案列表', desc: '表格展示在册钢包：包号、状态、累计使用次数、出包温度、上次检修时间等；选中可查看详情。' },
       { label: '搜索与筛选', desc: '可按钢包编号搜索，并按状态筛选：使用中、需关注、待检修、正在检修。' },
-      { label: '新建钢包', desc: '点击「新建钢包」，填写包号、投产时间、计划寿命、剩余寿命、最近温度、累计使用、上次检修、状态等后保存。' },
-      { label: '编辑 / 删除', desc: '选中钢包后，可编辑档案信息或删除记录。' },
+      { label: '新建钢包', desc: '点击「新建钢包」，填写包号、进/出包时间、进/出包重量（吨，保留 1 位小数）、出包温度（℃）、累计使用、上次检修、状态等后保存。' },
+      { label: '编辑 / 删除', desc: '选中钢包后，可手动修改进/出包时间、重量（吨）、出包温度（℃）等档案信息，或删除记录。' },
       { label: '状态说明', desc: '使用中（正常）、需关注（温度或寿命预警）、待检修 / 正在检修（维护状态）。' },
     ],
   },
@@ -102,7 +103,7 @@ export default function LadleUserManual() {
             <BookOpen size={14} aria-hidden="true" /> 操作指南
           </span>
           <h2>使用手册</h2>
-          <p>钢包监测系统各功能页面的简要操作说明，供现场操作人员参考。系统由西安豪克电子有限公司提供。</p>
+          <p>钢包监测系统各功能页面的简要操作说明，供现场操作人员参考。系统由{productVendorName}提供。</p>
         </div>
       </header>
 

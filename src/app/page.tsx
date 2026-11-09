@@ -19,13 +19,20 @@ import {
 } from '@/lib/ladle-navigation';
 import {
   createDefaultAppRoute,
+  createLadleProductRoute,
   pushAppRoute,
   readAppRouteFromLocation,
   replaceAppRoute,
   type AppRouteState,
   type LadlePanelMode,
 } from '@/lib/app-navigation';
-import { isLadleProductMode, isTroughProductMode, overviewDeviceTypes } from '@/lib/product-mode';
+import {
+  isBenxiSuiteEnabled,
+  isLadleProductMode,
+  isRadarModuleEnabled,
+  isTroughProductMode,
+  overviewDeviceTypes,
+} from '@/lib/product-mode';
 import { LogOut, User } from 'lucide-react';
 
 const AlarmCenter = dynamic(() => import('@/components/AlarmCenter'), { ssr: false });
@@ -35,11 +42,14 @@ const LadleManagement = dynamic(() => import('@/components/LadleManagement'), { 
 const LadleDataQuery = dynamic(() => import('@/components/LadleDataQuery'), { ssr: false });
 const LadleAlarmCenter = dynamic(() => import('@/components/LadleAlarmCenter'), { ssr: false });
 const LadleUserManual = dynamic(() => import('@/components/LadleUserManual'), { ssr: false });
+const TroughUserManual = dynamic(() => import('@/components/TroughUserManual'), { ssr: false });
 const UserManual = dynamic(() => import('@/components/UserManual'), { ssr: false });
 const WeeklyReportQuery = dynamic(() => import('@/components/WeeklyReportQuery'), { ssr: false });
 const DeviceMonitorPanel = dynamic(() => import('@/components/DeviceMonitorPanel'), { ssr: false });
 const MonitorCenter = dynamic(() => import('@/components/MonitorCenter'), { ssr: false });
 const LadleRecognitionMonitor = dynamic(() => import('@/components/LadleRecognitionMonitor'), { ssr: false });
+const SlagLineInspection = dynamic(() => import('@/components/benxi/SlagLineInspection'), { ssr: false });
+const LadleReport = dynamic(() => import('@/components/benxi/LadleReport'), { ssr: false });
 
 function resolveWinCC(deviceType: DeviceType | null): WinCCInstance | null {
   if (!deviceType) return null;
@@ -55,6 +65,7 @@ function applyRouteToState(
     setLadleShellActive: (value: boolean) => void;
     setLadlePanelMode: (value: LadlePanelMode) => void;
     setActiveNav: (value: string) => void;
+    setLadleFocusNo: (value: string | null) => void;
   },
 ) {
   setters.setSelectedDeviceType(route.deviceType);
@@ -62,6 +73,7 @@ function applyRouteToState(
   setters.setLadleShellActive(route.ladleShellActive);
   setters.setLadlePanelMode(route.ladlePanelMode);
   setters.setActiveNav(route.nav);
+  setters.setLadleFocusNo(route.ladleNo ?? null);
 }
 
 export default function Home() {
@@ -74,6 +86,7 @@ export default function Home() {
   const [ladleShellActive, setLadleShellActive] = useState(false);
   const [ladlePanelMode, setLadlePanelMode] = useState<LadlePanelMode>('selector');
   const [activeNav, setActiveNav] = useState('dashboard');
+  const [ladleFocusNo, setLadleFocusNo] = useState<string | null>(null);
   const [routeReady, setRouteReady] = useState(false);
   const troughUnreadAlarmCount = useUnreadAlarmCount();
   const ladleUnreadAlarmCount = useLadleUnreadAlarmCount(ladleShellActive || isLadleProductMode);
@@ -85,6 +98,7 @@ export default function Home() {
       setLadleShellActive,
       setLadlePanelMode,
       setActiveNav,
+      setLadleFocusNo,
     });
   }, []);
 
@@ -93,6 +107,11 @@ export default function Home() {
     if (mode === 'replace') replaceAppRoute(route);
     else pushAppRoute(route);
   }, [syncFromRoute]);
+
+  const selectRadarLadle = useCallback(
+    (no: string) => navigateTo(createLadleProductRoute('ladle-radar', no), 'replace'),
+    [navigateTo],
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -161,15 +180,14 @@ export default function Home() {
   };
 
   const handleEnterLadleWorkspace = () => {
-    navigateTo({
-      nav: defaultLadleNav,
-      deviceType: 'ladle-recognition',
-      ladlePanelMode: 'selector',
-      ladleShellActive: true,
-    });
+    navigateTo(createLadleProductRoute(isBenxiSuiteEnabled ? 'ladle-monitor' : defaultLadleNav));
   };
 
   const handleSelectLadleRadar = () => {
+    if (isBenxiSuiteEnabled) {
+      navigateTo(createLadleProductRoute('ladle-radar'));
+      return;
+    }
     navigateTo({
       nav: 'dashboard',
       deviceType: 'ladle-recognition',
@@ -210,10 +228,14 @@ export default function Home() {
           onBack={handleBackToOverview}
           ladlePanelMode={ladlePanelMode}
           onSelectLadleRadar={
-            selectedDeviceType === 'ladle-recognition' ? handleSelectLadleRadar : undefined
+            selectedDeviceType === 'ladle-recognition' && isRadarModuleEnabled
+              ? handleSelectLadleRadar
+              : undefined
           }
           onBackFromLadleRadar={
-            selectedDeviceType === 'ladle-recognition' ? handleBackFromLadleRadar : undefined
+            selectedDeviceType === 'ladle-recognition' && isRadarModuleEnabled
+              ? handleBackFromLadleRadar
+              : undefined
           }
           onEnterLadleWorkspace={
             selectedDeviceType === 'ladle-recognition' ? handleEnterLadleWorkspace : undefined
@@ -233,6 +255,10 @@ export default function Home() {
     );
   };
 
+  const openLadleNav = (nav: LadleNavId, ladleNo: string | null = null) => {
+    navigateTo(createLadleProductRoute(nav, ladleNo));
+  };
+
   const renderLadleContent = () => {
     const monitor = (
       <LadleRecognitionMonitor
@@ -247,6 +273,18 @@ export default function Home() {
     switch (activeNav) {
       case 'ladle-monitor':
         return monitor;
+      case 'ladle-radar':
+        return (
+          <SlagLineInspection ladleNo={ladleFocusNo} onSelectLadle={selectRadarLadle} />
+        );
+      case 'ladle-report':
+        return (
+          <LadleReport
+            ladleNo={ladleFocusNo}
+            onSelectLadle={(no) => openLadleNav('ladle-report', no)}
+            onOpenRadar={(no) => openLadleNav('ladle-radar', no)}
+          />
+        );
       case 'ladle-query':
         return <LadleDataQuery />;
       case 'ladle-curves':
@@ -284,11 +322,11 @@ export default function Home() {
         return <WeeklyReportQuery />;
       case 'manual':
         return isTroughProductMode
-          ? renderDashboard()
+          ? <TroughUserManual />
           : <UserManual onOpenLadle={() => handleSelectDeviceType('ladle-recognition')} />;
       case 'help':
         return isTroughProductMode
-          ? renderDashboard()
+          ? <TroughUserManual />
           : <UserManual onOpenLadle={() => handleSelectDeviceType('ladle-recognition')} />;
       default:
         return renderDashboard();
@@ -321,8 +359,8 @@ export default function Home() {
     ladles: '钢包管理',
     alarms: '告警中心',
     settings: '查询周报',
-    manual: '用户使用手册',
-    help: '用户使用手册',
+    manual: '使用手册',
+    help: '使用手册',
     ...ladleNavTitles,
   };
 

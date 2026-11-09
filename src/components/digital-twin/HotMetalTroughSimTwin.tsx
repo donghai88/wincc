@@ -10,6 +10,11 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import {
+  TROUGH_MONITOR_POINTS,
+  normalizeTroughLocationId,
+  resolveTroughAlarmLocationId,
+} from '@/data/trough-monitor-points';
 import type { WinCCInstance } from '@/types/template';
 import { useBusinessAlarmFeed } from '@/hooks/useBusinessAlarmFeed';
 import { useModbusTemperatureFeed } from '@/hooks/useModbusTemperatureFeed';
@@ -42,26 +47,6 @@ interface LayerConfig {
   legendMax: string;
 }
 
-/** 右侧列表按第1～7排中文名固定顺序展示，避免随 locationId 跳动 */
-const MONITOR_DISPLAY_ORDER = [
-  '第一排左侧',
-  '第一排右侧',
-  '第二排左侧',
-  '第二排右侧',
-  '第三排左侧',
-  '第三排右侧',
-  '第四排左侧',
-  '第四排右侧',
-  '第五排左侧',
-  '第五排右侧',
-  '第六排左侧前',
-  '第六排左侧后',
-  '第六排右侧前',
-  '第六排右侧后',
-  '第七排左侧',
-  '第七排右侧',
-] as const;
-
 const cadLayerConfig: LayerConfig = {
   id: 'cad',
   name: '模型本体',
@@ -71,7 +56,7 @@ const cadLayerConfig: LayerConfig = {
 };
 
 const modbusFeedLabels = {
-  mock: '演示推送',
+  mock: '实时数据',
   connecting: '连接中',
   connected: '实时数据',
   fallback: '备用数据',
@@ -79,13 +64,9 @@ const modbusFeedLabels = {
   retrying: '重连中',
 } as const;
 
-const normalizeLocationId = (locationId: string) => (
-  locationId.toLowerCase().replace(/^loc_0+/, 'loc_')
-);
-
 const formatPointLabel = (locationId?: string) => {
   if (!locationId) return '测点 --';
-  const match = normalizeLocationId(locationId).match(/^loc_(\d+)$/);
+  const match = normalizeTroughLocationId(locationId).match(/^loc_(\d+)$/);
   if (!match) return locationId;
   return `测点 ${match[1].padStart(2, '0')}`;
 };
@@ -110,32 +91,36 @@ export default function HotMetalTroughSimTwin({ wincc, onBack }: HotMetalTroughS
         : modbusFeedLabels[modbusFeed.status];
   const activeConfig = cadLayerConfig;
 
-  const pointsByName = useMemo(() => {
+  const pointsById = useMemo(() => {
     const map = new Map<string, (typeof modbusPoints)[number]>();
     modbusPoints.forEach((point) => {
-      map.set(point.locationName.trim(), point);
+      const locationId = normalizeTroughLocationId(point.locationId);
+      if (!locationId) return;
+      map.set(locationId, point);
     });
     return map;
   }, [modbusPoints]);
 
-  const latestLocationName = modbusPoint?.locationName.trim() ?? '';
-  const alarmLocationName = isBusinessAlarmActive ? businessAlarm?.locationName.trim() ?? '' : '';
+  const latestLocationId = modbusPoint ? normalizeTroughLocationId(modbusPoint.locationId) : '';
+  const alarmLocationId = isBusinessAlarmActive
+    ? resolveTroughAlarmLocationId(businessAlarm?.locationName, modbusPoints)
+    : '';
 
   const pointRows = useMemo(() => (
-    MONITOR_DISPLAY_ORDER.map((locationName) => {
-      const live = pointsByName.get(locationName);
+    TROUGH_MONITOR_POINTS.map((monitorPoint) => {
+      const live = pointsById.get(monitorPoint.locationId);
       return {
-        id: locationName,
-        label: formatPointLabel(live?.locationId),
+        id: monitorPoint.locationId,
+        label: formatPointLabel(monitorPoint.locationId),
         temperature: live?.temperature,
         receivedAt: live?.receivedAt,
-        locationName,
+        locationName: live?.locationName.trim() || monitorPoint.locationName,
         isLive: Boolean(live),
-        isLatest: latestLocationName === locationName,
-        isAlarm: alarmLocationName === locationName,
+        isLatest: latestLocationId === monitorPoint.locationId,
+        isAlarm: alarmLocationId === monitorPoint.locationId,
       };
     })
-  ), [alarmLocationName, latestLocationName, pointsByName]);
+  ), [alarmLocationId, latestLocationId, pointsById]);
 
   const liveCount = pointRows.filter((row) => row.isLive).length;
 

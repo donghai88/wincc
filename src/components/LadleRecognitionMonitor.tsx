@@ -321,6 +321,10 @@ function SnapshotThumbCard({
     : '';
   const showImage = Boolean(imageUrl) && !imageFailed;
 
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
+
   return (
     <button type="button" className={styles.snapshotCard}>
       <div className={styles.snapshotThumb} data-empty={showImage ? undefined : 'true'}>
@@ -437,7 +441,7 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
           id: String(record.id),
           pkg: record.ladleNo,
           time: record.recordTime,
-          temp: Math.round(record.maxTemp),
+          temp: isValidThermalReading(record.maxTemp) ? Math.round(record.maxTemp) : null,
           camera: record.deviceName,
           snapshotPath: typeof record.snapshotPath === 'string' ? record.snapshotPath.trim() : '',
         })));
@@ -465,14 +469,14 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
               id: number;
               ladleNo: string;
               deviceName: string;
-              maxTemp: number;
+              maxTemp: number | null;
               recordTime: string;
               snapshotPath?: string | null;
             }) => ({
               id: String(record.id),
               pkg: record.ladleNo,
               time: record.recordTime,
-              temp: Math.round(record.maxTemp),
+              temp: isValidThermalReading(record.maxTemp) ? Math.round(record.maxTemp) : null,
               camera: record.deviceName,
               snapshotPath: typeof record.snapshotPath === 'string' ? record.snapshotPath.trim() : '',
             })));
@@ -490,7 +494,7 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
             id: String(record.id),
             pkg: record.ladleNo,
             time: record.recordTime,
-            temp: Math.round(record.maxTemp),
+            temp: isValidThermalReading(record.maxTemp) ? Math.round(record.maxTemp) : null,
             camera: record.deviceName,
             snapshotPath: typeof record.snapshotPath === 'string' ? record.snapshotPath.trim() : '',
           })));
@@ -504,6 +508,10 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
     };
 
     void loadDashboardMetrics();
+    const metricsTimer = setInterval(() => {
+      void loadDashboardMetrics();
+    }, 10_000);
+    return () => clearInterval(metricsTimer);
   }, []);
 
   useEffect(() => {
@@ -694,8 +702,8 @@ export default function LadleRecognitionMonitor({ onBack, wincc, embedded = fals
     ?? latestRecords[0]?.pkg
     ?? null;
   const title = wincc?.name ?? '钢包识别';
-  const subtitle = modbusFeed.status === 'mock' || modbusFeed.status === 'fallback'
-    ? 'OCR + 红外 / Mock 数据'
+  const subtitle = modbusFeed.status === 'fallback'
+    ? 'OCR + 红外 / 备用数据'
     : 'OCR + 红外 / 实时数据';
 
   return (

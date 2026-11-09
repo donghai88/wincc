@@ -13,6 +13,7 @@ import {
 } from '@/data/wincc-config';
 import DeviceSelector from '@/components/DeviceSelector';
 import SystemOverview from '@/components/SystemOverview';
+import { isRadarModuleEnabled, productConfig } from '@/lib/product-mode';
 import {
   Thermometer,
   Weight,
@@ -275,6 +276,8 @@ export default function DeviceMonitorPanel({
         <LadleMonitoringModeSelector
           wincc={selectedWinCC}
           onBack={onBack}
+          title={productConfig?.title}
+          showRadar={isRadarModuleEnabled}
           onSelectThermal={() => {
             if (onEnterLadleWorkspace) {
               onEnterLadleWorkspace();
@@ -282,6 +285,17 @@ export default function DeviceMonitorPanel({
             }
             setLadleMonitorMode('thermal');
           }}
+          onSelectRadar={
+            isRadarModuleEnabled
+              ? () => {
+                  if (onSelectLadleRadar) {
+                    onSelectLadleRadar();
+                    return;
+                  }
+                  setLadleMonitorMode('radar');
+                }
+              : undefined
+          }
         />
       );
     }

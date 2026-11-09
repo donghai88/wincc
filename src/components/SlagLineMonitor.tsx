@@ -1,12 +1,16 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, ArrowLeft, CheckCircle2, Radar, ScanLine, TriangleAlert } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
 import workspaceStyles from './MonitoringWorkspace.module.css';
 import styles from './SlagLineMonitor.module.css';
 
+const PointCloudPcdViewer = dynamic(() => import('@/components/PointCloudPcdViewer'), { ssr: false });
+
 type ViewMode = 'iso' | 'top' | 'side' | 'section';
+type CloudSource = 'demo' | 'pcd';
 type Rating = 'safe' | 'warning' | 'danger';
 
 interface SlagRecord {
@@ -201,6 +205,7 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedLadleId, setSelectedLadleId] = useState(ladleIds[0]);
   const [viewMode, setViewMode] = useState<ViewMode>('iso');
+  const [cloudSource, setCloudSource] = useState<CloudSource>('pcd');
   const [records, setRecords] = useState(initialRecords);
   const [progress, setProgress] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
@@ -217,9 +222,10 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
   }).join(' '), [depths]);
 
   useEffect(() => {
+    if (cloudSource !== 'demo') return;
     const canvas = canvasRef.current;
     if (canvas) drawPointCloud(canvas, viewMode, packageIndex, scanVersion, thresholds);
-  }, [packageIndex, scanVersion, thresholds, viewMode]);
+  }, [cloudSource, packageIndex, scanVersion, thresholds, viewMode]);
 
   useEffect(() => {
     if (!isScanning) return;
@@ -265,7 +271,7 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
           </button>
           <div className={styles.titleBlock}>
             <div><Radar size={17} aria-hidden="true" /><h2>渣线雷达探测</h2><span>在线监测</span></div>
-            <p>{wincc.location} · 双雷达点云分析 · 演示数据</p>
+            <p>{wincc.location} · 双雷达点云分析 · {cloudSource === 'pcd' ? '真实 PCD 全量加载' : '合成点云'}</p>
           </div>
           <span className={styles.running}><i /> 双雷达在线</span>
         </div>
@@ -316,13 +322,62 @@ export default function SlagLineMonitor({ wincc, onBack }: SlagLineMonitorProps)
           <div className={styles.mainContent}>
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
-                <div><h3>3D 点云可视化 — <b>{selectedLadleId}</b></h3><p>双雷达融合点云 · 约 120 万点</p></div>
+                <div>
+                  <h3>3D 点云可视化 — <b>{selectedLadleId}</b></h3>
+                  <p>
+                    {cloudSource === 'pcd'
+                      ? 'Three.js PCDLoader · Img3d_20260526-134208807.pcd · 全量约 282 万点'
+                      : '双雷达融合点云 · 约 120 万点'}
+                  </p>
+                </div>
                 <div className={styles.viewButtons}>
-                  {views.map((view) => <button type="button" className={viewMode === view.id ? styles.active : undefined} key={view.id} onClick={() => setViewMode(view.id)}>{view.label}</button>)}
+                  <button
+                    type="button"
+                    className={cloudSource === 'pcd' ? styles.active : undefined}
+                    onClick={() => setCloudSource('pcd')}
+                  >
+                    真实 PCD
+                  </button>
+                  <button
+                    type="button"
+                    className={cloudSource === 'demo' ? styles.active : undefined}
+                    onClick={() => setCloudSource('demo')}
+                  >
+                    合成点云
+                  </button>
+                  {cloudSource === 'demo'
+                    ? views.map((view) => (
+                        <button
+                          type="button"
+                          className={viewMode === view.id ? styles.active : undefined}
+                          key={view.id}
+                          onClick={() => setViewMode(view.id)}
+                        >
+                          {view.label}
+                        </button>
+                      ))
+                    : null}
                 </div>
               </div>
-              <div className={styles.canvasWrap}><canvas ref={canvasRef} width={900} height={480} /></div>
-              <div className={styles.canvasFooter}><span>设备：RH-LR1540 × 2　|　扫描角：270°　|　重复精度：±5mm</span><span><i className={styles.safe}>■ 安全</i><i className={styles.warning}>■ 预警</i><i className={styles.danger}>■ 危险</i></span></div>
+              <div className={`${styles.canvasWrap} ${cloudSource === 'pcd' ? styles.canvasWrapLive : ''}`}>
+                {cloudSource === 'pcd' ? (
+                  <PointCloudPcdViewer />
+                ) : (
+                  <canvas ref={canvasRef} width={900} height={480} />
+                )}
+              </div>
+              <div className={styles.canvasFooter}>
+                <span>
+                  {cloudSource === 'pcd'
+                    ? '本地全量加载压测 · ASCII 89MB · 解析后可能占用较大内存'
+                    : '设备：RH-LR1540 × 2　|　扫描角：270°　|　重复精度：±5mm'}
+                </span>
+                <span>
+                  <i className={styles.safe}>■ 安全</i>
+                  <i className={styles.warning}>■ 预警</i>
+                  <i className={styles.danger}>■ 危险</i>
+                </span>
+              </div>
             </section>
 
             <section className={styles.panel}>

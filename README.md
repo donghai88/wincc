@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## 分支
+
+当前分支 `product/integrated` 是集成平台和演示包的共同基线，铁水沟、山西钢包、本溪钢包的源码都在这里。产品交付分支从这里拉出，只固定默认模式和构建脚本，源码仍保留全部模块，方便把共享修复合回去：
+
+- `product/trough`：铁水沟
+- `product/ladle-recognition`：山西钢包识别
+- `product/benxi-ladle`：本溪钢包
+
+演示包不单独占分支，仍在本分支用 `npm run dev:demo` / `npm run pack:demo` 构建。
+
 ## Docker 部署
 
 `docker:build` 会先在构建机执行 `next build`，再将生成的静态 `out/` 封入镜像。最终镜像仅包含静态导出产物和 Nginx；运行容器不依赖源码、Node.js 或任何构建工具。
@@ -24,6 +34,10 @@ docker run --rm -p 3001:8080 wincc:ladle-recognition
 # 钢包监测：真实后端为本机 8080，禁用 mock
 npm run docker:build:ladle-recognition:local-backend
 docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:ladle-recognition-local-backend
+
+# 本溪钢包（含雷达渣线模块）
+npm run docker:build:benxi-ladle
+docker run --rm -p 3001:8080 wincc:benxi-ladle
 ```
 
 容器监听 `8080`，上述命令会映射为本机的 `http://localhost:3001`。`NEXT_PUBLIC_*` 配置会在镜像构建时写入前端产物；变更这些配置后需要重新构建镜像。
@@ -31,6 +45,23 @@ docker run --rm --add-host=host.docker.internal:host-gateway -p 3001:8080 wincc:
 `build:trough:local-backend` 固定构建为铁水沟单模块，并写入 `NEXT_PUBLIC_API_MOCK_MODE=off`，不会使用 mock 或在接口失败时回退为 mock 数据。镜像通过 Nginx 将浏览器的同源 `/api/*` 和 `/ws/*` 请求代理到测试服务器宿主机的 `localhost:8080`；`--add-host=host.docker.internal:host-gateway` 是 Linux Docker 容器访问宿主机服务所必需的参数。这样外部浏览器不会把 `localhost:8080` 误解为访问者自己的电脑。
 
 镜像将 Nginx 访问日志和错误日志输出到标准输出/错误流，可在测试服务器执行 `docker logs -f <容器名>` 排查静态文件 404、接口状态码和请求耗时。
+
+## 本地演示版（源码部署，全部 Mock）
+
+演示版不限定产品模式，铁水沟、山西钢包、本溪钢包（雷达渣线 / 钢包报表等）全部可见，所有数据均为 Mock，不需要任何后端。雷达三维视图使用 `public/pointclouds/` 下的真实 PCD 作外观，侵蚀着色与数值来自 Mock。
+
+```bash
+npm install
+npm run dev:demo    # 开发模式，http://localhost:3001
+npm run demo        # 构建静态产物后用 serve-static 启动，http://localhost:3001
+npm run pack:demo   # 构建并打出服务器演示包 dist/ruihai-demo-YYYYMMDD.{tar.gz,zip}
+```
+
+登录账号：`admin / admin123`。
+
+### 部署演示服务器
+
+`npm run pack:demo` 产出的演示包只含静态页面和一个零依赖的启动脚本，演示机只需安装一次 Node.js 18+（推荐 22 LTS），不需要源码和 `npm install`。解压后 Windows 双击 `start-demo.cmd`，Linux 执行 `sh start-demo.sh`，默认端口 3001（环境变量 `PORT` 可改）。也可以直接用 nginx 托管包内的 `out/` 目录。详见包内 `README.md`（源文件 `deploy/demo/README.md`）。
 
 ## 真实接口全链路冒烟测试
 
@@ -54,6 +85,9 @@ set E2E_BASE_URL=http://测试服务器IP:3001 && npm run test:e2e:api
 ```bash
 # 终端 1：启动钢包产品模式（默认 mock）
 npm run dev:ladle-recognition
+
+# 本溪钢包版（开启雷达渣线入口）
+# npm run dev:benxi-ladle
 
 # 终端 2：跑冒烟
 npx playwright install chromium

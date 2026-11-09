@@ -70,14 +70,18 @@ Windows 可用 `deploy\start.cmd`。
 - 前端监听 `0.0.0.0:3001`
 - 后端在同机 `127.0.0.1:8080`
 - 浏览器只访问前端 3001，接口走 `/api`、`/ws` 同源代理
-- 测温截图 Windows 绝对路径由 `serve-static` 的 `/api/media/snapshot` 同机读文件（默认白名单 `D:\data\ladle`，可用 `SNAPSHOT_ALLOW_ROOTS` 调整）
+- 测温截图两种路径：
+  - **Web 相对路径** `/snapshots/...`：启动时配置 `SNAPSHOT_UPSTREAM`（如 `http://192.168.1.109:85`），由 `serve-static` 反代 `/snapshots/*`；**不必为截图重编前端**
+  - 可选构建时写入 `NEXT_PUBLIC_SNAPSHOT_BASE_URL=http://192.168.1.109:85`（会把绝对地址打进 JS；改地址需重打 tar）
+  - **Windows 绝对路径** `D:\...`：由 `/api/media/snapshot` 同机读文件（`SNAPSHOT_ALLOW_ROOTS`）
 
 ### 验收
 
 1. 本地构建成功，`out/` 存在
 2. 用上述方式启动后，打开 `http://127.0.0.1:3001` 能进入钢包监测一级菜单（监控总览 / 实时监控 / 数据查询等）
 3. 页面不应再走 mock；接口应打到代理目标后端（可用浏览器 Network 或现有 verify 脚本验证）
-4. 输出：
+4. 配置好 `SNAPSHOT_UPSTREAM` 后，监控页截图请求应为同源 `/snapshots/...` 且返回 200 图片
+5. 输出：
    - zip 包路径
    - 构建命令
    - 启动命令
@@ -99,9 +103,11 @@ Windows 可用 `deploy\start.cmd`。
 | 启动 | `node scripts/serve-static.mjs` |
 | 端口 | `3001` |
 | 后端代理 | `API_PROXY_TARGET=http://127.0.0.1:8080` |
+| 截图反代 | `SNAPSHOT_UPSTREAM=http://192.168.1.109:85` |
 | 参考 | `deploy/README.md`、`npm run build:trough:local-backend` |
 
 ## 常见调整
 
 - 后端不是 `8080`：改 `API_PROXY_TARGET`
+- 截图静态服务地址变了：改 `SNAPSHOT_UPSTREAM` 后重启即可（无需重打 tar）
 - 只要 mock 演示包：将 `NEXT_PUBLIC_API_MOCK_MODE=off` 改为 `mock`

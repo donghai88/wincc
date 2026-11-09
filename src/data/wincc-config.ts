@@ -559,7 +559,7 @@ const applyAlarmBatchProcess = (
   });
 };
 
-/** Local mock for POST /alarm/batch-process — mirrors the sheet contract. */
+/** Local mock for PUT /alarm/batch-process — mirrors the sheet contract. */
 export function processAlarmBatch(request: AlarmBatchProcessRequest): boolean {
   const eventIds = request.eventIds.map((id) => id.trim()).filter(Boolean);
   const processor = request.processor.trim();
@@ -597,22 +597,30 @@ export function queryAlarmStatsByLocation(query: AlarmLocationStatQuery): AlarmL
         locationName: record.locationName,
         alarmCount: 0,
         unreadCount: 0,
-        maxTemp: Number.NEGATIVE_INFINITY,
-        minTemp: Number.POSITIVE_INFINITY,
+        maxTemp: null as number | null,
+        minTemp: null as number | null,
       };
 
       current.alarmCount += 1;
       current.unreadCount += record.isRead === 0 ? 1 : 0;
-      current.maxTemp = Math.max(current.maxTemp, record.maxTemp);
-      current.minTemp = Math.min(current.minTemp, record.minTemp);
+      if (record.maxTemp !== null) {
+        current.maxTemp = current.maxTemp === null
+          ? record.maxTemp
+          : Math.max(current.maxTemp, record.maxTemp);
+      }
+      if (record.minTemp !== null) {
+        current.minTemp = current.minTemp === null
+          ? record.minTemp
+          : Math.min(current.minTemp, record.minTemp);
+      }
       stats.set(record.locationName, current);
       return stats;
     }, new Map<string, AlarmLocationStat>()).values()
   )
     .map((stat) => ({
       ...stat,
-      maxTemp: Number.isFinite(stat.maxTemp) ? stat.maxTemp : 0,
-      minTemp: Number.isFinite(stat.minTemp) ? stat.minTemp : 0,
+      maxTemp: typeof stat.maxTemp === 'number' && Number.isFinite(stat.maxTemp) ? stat.maxTemp : null,
+      minTemp: typeof stat.minTemp === 'number' && Number.isFinite(stat.minTemp) ? stat.minTemp : null,
     }))
     .sort((left, right) => left.locationName.localeCompare(right.locationName, 'zh-CN'));
 }

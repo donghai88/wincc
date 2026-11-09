@@ -7,6 +7,7 @@ import {
   isMockOnly,
   unwrapApiData,
 } from '@/lib/api-config';
+import { getTroughMonitorPoint } from '@/data/trough-monitor-points';
 import type {
   DigitalTwinTemperaturePoint,
   ModbusFeedSource,
@@ -25,25 +26,39 @@ const MOCK_SOCKET_BREAK_MESSAGE = '数据连接中断';
 const MOCK_SOCKET_RETRY_MESSAGE = '正在重连';
 const WS_RETRY_MESSAGE = '正在重连';
 
-/** Align with real trough push locationName so digital-twin placement can resolve by name. */
-const MOCK_LOCATIONS = [
-  { locationId: 'loc_1', locationName: '第六排左侧后', baseTemp: 106.2 },
-  { locationId: 'loc_2', locationName: '第六排左侧前', baseTemp: 86.9 },
-  { locationId: 'loc_3', locationName: '第六排右侧后', baseTemp: 174.3 },
-  { locationId: 'loc_4', locationName: '第七排左侧', baseTemp: 141.0 },
-  { locationId: 'loc_5', locationName: '第六排右侧前', baseTemp: 117.2 },
-  { locationId: 'loc_6', locationName: '第七排右侧', baseTemp: 131.2 },
-  { locationId: 'loc_7', locationName: '第一排左侧', baseTemp: 161.9 },
-  { locationId: 'loc_8', locationName: '第一排右侧', baseTemp: 176.6 },
-  { locationId: 'loc_9', locationName: '第三排左侧', baseTemp: 195.3 },
-  { locationId: 'loc_10', locationName: '第三排右侧', baseTemp: 180.2 },
-  { locationId: 'loc_11', locationName: '第四排左侧', baseTemp: 159.6 },
-  { locationId: 'loc_12', locationName: '第二排左侧', baseTemp: 177.0 },
-  { locationId: 'loc_13', locationName: '第二排右侧', baseTemp: 155.9 },
-  { locationId: 'loc_14', locationName: '第五排左侧', baseTemp: 181.5 },
-  { locationId: 'loc_15', locationName: '第五排右侧', baseTemp: 169.9 },
-  { locationId: 'loc_16', locationName: '第四排右侧', baseTemp: 179.4 },
-] as const;
+/** 基准温度。点位 key 和名称从监控点表取，避免和 loc_1～loc_16 再各写一份。 */
+const MOCK_BASE_TEMP_BY_ID = {
+  loc_1: 106.2,
+  loc_2: 86.9,
+  loc_3: 174.3,
+  loc_4: 141.0,
+  loc_5: 117.2,
+  loc_6: 131.2,
+  loc_7: 161.9,
+  loc_8: 176.6,
+  loc_9: 195.3,
+  loc_10: 180.2,
+  loc_11: 159.6,
+  loc_12: 177.0,
+  loc_13: 155.9,
+  loc_14: 181.5,
+  loc_15: 169.9,
+  loc_16: 179.4,
+} as const;
+
+const MOCK_LOCATIONS = (Object.keys(MOCK_BASE_TEMP_BY_ID) as Array<keyof typeof MOCK_BASE_TEMP_BY_ID>)
+  .sort((left, right) => Number(left.slice(4)) - Number(right.slice(4)))
+  .map((locationId) => {
+    const point = getTroughMonitorPoint(locationId);
+    if (!point) {
+      throw new Error(`铁水沟监控点缺少 ${locationId}`);
+    }
+    return {
+      locationId: point.locationId,
+      locationName: point.locationName,
+      baseTemp: MOCK_BASE_TEMP_BY_ID[locationId],
+    };
+  });
 
 interface ModbusTemperatureMessage {
   locationId: string;
@@ -117,9 +132,14 @@ const pickModbusMessages = (payload: unknown): ModbusTemperatureMessage[] => {
     const locationId = readString(row, 'locationId');
     const locationName = readString(row, 'locationName');
     const temperature = readString(row, 'temperature');
+    const monitorPoint = getTroughMonitorPoint(locationId);
 
-    if (!locationId || !locationName || !temperature) return [];
-    return [{ locationId, locationName, temperature }];
+    if (!monitorPoint || !temperature) return [];
+    return [{
+      locationId: monitorPoint.locationId,
+      locationName: locationName || monitorPoint.locationName,
+      temperature,
+    }];
   });
 };
 

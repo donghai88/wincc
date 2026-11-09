@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ChevronRight, Thermometer } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Radar, Thermometer } from 'lucide-react';
 import type { WinCCInstance } from '@/types/template';
 import workspaceStyles from './MonitoringWorkspace.module.css';
 import styles from './LadleMonitoringModeSelector.module.css';
@@ -9,12 +9,20 @@ interface LadleMonitoringModeSelectorProps {
   wincc: WinCCInstance;
   onBack: () => void;
   onSelectThermal: () => void;
+  onSelectRadar?: () => void;
+  title?: string;
+  showRadar?: boolean;
 }
 
 export default function LadleMonitoringModeSelector({
   onBack,
   onSelectThermal,
+  onSelectRadar,
+  title = '钢包识别',
+  showRadar = false,
 }: LadleMonitoringModeSelectorProps) {
+  const radarAvailable = showRadar && Boolean(onSelectRadar);
+
   return (
     <section className={styles.shell} aria-label="钢包监测功能选择">
       <div className={`${styles.topBar} ${workspaceStyles.topBar}`}>
@@ -24,7 +32,7 @@ export default function LadleMonitoringModeSelector({
             返回平台总览
           </button>
           <div className={styles.titleBlock}>
-            <h2>钢包识别</h2>
+            <h2>{title}</h2>
           </div>
           <span className={styles.status}><i /> 系统运行中</span>
         </div>
@@ -34,7 +42,7 @@ export default function LadleMonitoringModeSelector({
         <section className={styles.modePanel} aria-label="监测功能">
           <div className={styles.panelHeader}>
             <h3>监测功能</h3>
-            <span>点击进入热成像监控</span>
+            <span>{radarAvailable ? '请选择一个功能继续' : '点击进入热成像监控'}</span>
           </div>
           <div className={styles.options}>
           <button type="button" className={`${styles.option} ${styles.thermal}`} onClick={onSelectThermal}>
@@ -47,6 +55,19 @@ export default function LadleMonitoringModeSelector({
             </div>
             <span className={styles.enter}>进入 <ChevronRight size={17} aria-hidden="true" /></span>
           </button>
+
+          {radarAvailable ? (
+            <button type="button" className={`${styles.option} ${styles.radar}`} onClick={onSelectRadar}>
+              <div className={styles.sequence}>02</div>
+              <div className={styles.icon}><Radar size={20} aria-hidden="true" /></div>
+              <div className={styles.optionBody}>
+                <h3>雷达渣线检测</h3>
+                <p>双雷达点云扫描、渣线深度与检测记录；单包检测详情与历史对比分析。</p>
+                <span className={styles.capability}>设备：LR-01 / LR-02　·　360°覆盖　·　测距精度 ±10mm</span>
+              </div>
+              <span className={styles.enter}>进入 <ChevronRight size={17} aria-hidden="true" /></span>
+            </button>
+          ) : null}
           </div>
         </section>
       </main>

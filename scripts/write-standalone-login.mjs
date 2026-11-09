@@ -7,12 +7,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const outDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'out');
+const isBenxi = process.env.NEXT_PUBLIC_PRODUCT_MODE === 'benxi-ladle';
+const loginTitle = isBenxi ? '智能检测系统' : '监控集成平台';
+const loginSubtitle = isBenxi ? '' : '钢铁冶金监控系统';
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>监控集成平台 | 登录</title>
+  <title>${loginTitle}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -56,8 +59,8 @@ const html = `<!DOCTYPE html>
   <div class="card">
     <div class="head">
       <div class="logo"></div>
-      <h1>监控集成平台</h1>
-      <p>钢铁冶金监控系统</p>
+      <h1>${loginTitle}</h1>
+      ${loginSubtitle ? `<p>${loginSubtitle}</p>` : ''}
     </div>
     <form id="loginForm" action="javascript:void(0)">
       <div id="msg" class="msg"></div>

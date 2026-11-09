@@ -27,6 +27,7 @@ import 'dayjs/locale/zh-cn';
 import type { ColumnsType } from 'antd/es/table';
 import AntdStyleRegistry from '@/components/AntdStyleRegistry';
 import { AppDatePicker } from '@/components/AppDatePicker';
+import { getTroughMonitorPoint } from '@/data/trough-monitor-points';
 import {
   buildApiUrl,
   canUseMockData,
@@ -75,7 +76,7 @@ const DOCUMENTED_WEEKLY_REPORT_ROWS: WeeklyReportApiRow[] = [
   {
     id: 7,
     locationId: 'loc_1',
-    locationName: '位置1',
+    locationName: getTroughMonitorPoint('loc_1')?.locationName ?? 'loc_1',
     avgTemperature: 25.30,
     maxTemperature: 25.60,
     level1AlarmCount: 0,
@@ -87,7 +88,7 @@ const DOCUMENTED_WEEKLY_REPORT_ROWS: WeeklyReportApiRow[] = [
   {
     id: 8,
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: getTroughMonitorPoint('loc_2')?.locationName ?? 'loc_2',
     avgTemperature: 18.38,
     maxTemperature: 18.60,
     level1AlarmCount: 0,
@@ -99,7 +100,7 @@ const DOCUMENTED_WEEKLY_REPORT_ROWS: WeeklyReportApiRow[] = [
   {
     id: 9,
     locationId: 'loc_3',
-    locationName: '位置3',
+    locationName: getTroughMonitorPoint('loc_3')?.locationName ?? 'loc_3',
     avgTemperature: 30.08,
     maxTemperature: 30.30,
     level1AlarmCount: 1,

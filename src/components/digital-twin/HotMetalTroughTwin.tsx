@@ -45,7 +45,7 @@ const statusLabels = {
 } as const;
 
 const modbusFeedLabels = {
-  mock: '演示推送',
+  mock: '实时数据',
   connecting: '连接中',
   connected: '实时数据',
   fallback: '备用数据',
@@ -251,7 +251,7 @@ export default function HotMetalTroughTwin({ wincc, onBack }: HotMetalTroughTwin
               <strong>{livePointCardLabel}</strong>
             </div>
             <div className={styles.livePointValue}>
-              <span>{modbusPoint?.locationName ?? '位置1'}</span>
+              <span>{modbusPoint?.locationName ?? '等待点位'}</span>
               <strong>{livePointValue !== undefined ? formatValue(livePointValue) : '--'}</strong>
               <em>°C</em>
             </div>

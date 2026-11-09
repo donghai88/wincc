@@ -18,6 +18,8 @@
 /.next/
 /out/
 **/out/
+/dist/
+/.cache/
 **/.next/
 *.zip
 *.tar
@@ -31,6 +33,12 @@ ruihai-ladle-recognition-frontend-*/
 # misc
 .DS_Store
 *.pem
+
+# large local point clouds (keep on disk for local preview, do not commit)
+/public/pointclouds/*.pcd
+/public/pointclouds/*.ply
+/public/pointclouds/*.las
+/public/pointclouds/*.laz
 
 # debug
 npm-debug.log*

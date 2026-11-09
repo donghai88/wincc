@@ -17,7 +17,7 @@ import {
   isMockOnly,
   unwrapApiData,
 } from '@/lib/api-config';
-import type { LadleEntity, LadleListQuery, LadleStatusCode } from '@/types/ladle-api';
+import type { LadleEntity, LadleListQuery, LadleStatusCode, LadleWritePayload } from '@/types/ladle-api';
 import { ladleStatusLabels } from '@/types/ladle-api';
 import styles from './LadleManagement.module.css';
 
@@ -32,14 +32,57 @@ const statusClass: Record<LadleStatusCode, string> = {
 
 const emptyForm = (): Omit<LadleEntity, 'id'> => ({
   ladleNo: '',
-  productionDate: '2026-07-20',
-  plannedLifespan: 500,
-  estimatedRemainingLife: 400,
-  latestTemperature: '300',
+  inLadleTime: '2026-07-20',
+  outLadleTime: '2026-07-20',
+  inLadleWeight: 0,
+  outLadleWeight: 0,
+  outLadleTemperature: 0,
   lastMaintenanceTime: '2026-07-30',
   totalUsageCount: 0,
   currentStatus: '1',
 });
+
+const toFiniteNumber = (value: unknown, fallback = 0) => {
+  const next = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(next) ? next : fallback;
+};
+
+/** 列表/详情可能返回 number 或 string，统一成表单 number */
+const normalizeLadleEntity = (entity: LadleEntity): LadleEntity => ({
+  ...entity,
+  inLadleTime: entity.inLadleTime == null ? '' : String(entity.inLadleTime),
+  outLadleTime: entity.outLadleTime == null ? '' : String(entity.outLadleTime),
+  inLadleWeight: toFiniteNumber(entity.inLadleWeight),
+  outLadleWeight: toFiniteNumber(entity.outLadleWeight),
+  outLadleTemperature: Math.round(toFiniteNumber(entity.outLadleTemperature)),
+  lastMaintenanceTime: entity.lastMaintenanceTime == null ? '' : String(entity.lastMaintenanceTime),
+  totalUsageCount: Math.round(toFiniteNumber(entity.totalUsageCount)),
+  currentStatus: String(entity.currentStatus) as LadleStatusCode,
+});
+
+/**
+ * 按文档 POST/PUT 示例组包：
+ * inLadleWeight / outLadleWeight / outLadleTemperature 为 string；
+ * 不提交 postMaintenanceUsageCount。
+ */
+const buildLadleWritePayload = (
+  form: Omit<LadleEntity, 'id'> | LadleEntity,
+  id?: number,
+): LadleWritePayload => {
+  const payload: LadleWritePayload = {
+    ladleNo: form.ladleNo.trim(),
+    inLadleTime: String(form.inLadleTime ?? ''),
+    outLadleTime: String(form.outLadleTime ?? ''),
+    inLadleWeight: toFiniteNumber(form.inLadleWeight).toFixed(1),
+    outLadleWeight: toFiniteNumber(form.outLadleWeight).toFixed(1),
+    outLadleTemperature: String(Math.round(toFiniteNumber(form.outLadleTemperature))),
+    lastMaintenanceTime: String(form.lastMaintenanceTime ?? ''),
+    totalUsageCount: Math.round(toFiniteNumber(form.totalUsageCount)),
+    currentStatus: form.currentStatus,
+  };
+  if (id !== undefined) payload.id = id;
+  return payload;
+};
 
 export default function LadleManagement() {
   const [query, setQuery] = useState('');
@@ -85,7 +128,7 @@ export default function LadleManagement() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json() as unknown;
       const data = unwrapApiData(payload) as { rows?: LadleEntity[]; total?: number };
-      const nextRows = Array.isArray(data.rows) ? data.rows : [];
+      const nextRows = (Array.isArray(data.rows) ? data.rows : []).map(normalizeLadleEntity);
       setRows(nextRows);
       setTotal(typeof data.total === 'number' ? data.total : 0);
       setStatus('success');
@@ -111,7 +154,7 @@ export default function LadleManagement() {
 
   const loadDetail = async (id: number) => {
     if (isMockOnly || canUseMockData) {
-      setSelected(getLadleById(id).data);
+      setSelected(normalizeLadleEntity(getLadleById(id).data));
       return;
     }
 
@@ -121,9 +164,9 @@ export default function LadleManagement() {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json() as unknown;
-      setSelected(unwrapApiData(payload) as LadleEntity);
+      setSelected(normalizeLadleEntity(unwrapApiData(payload) as LadleEntity));
     } catch {
-      setSelected(getLadleById(id).data);
+      setSelected(normalizeLadleEntity(getLadleById(id).data));
     }
   };
 
@@ -149,7 +192,17 @@ export default function LadleManagement() {
     if (!selected) return;
     setCreating(false);
     setEditing(true);
-    setForm({ ...selected });
+    setForm({
+      ladleNo: selected.ladleNo,
+      inLadleTime: selected.inLadleTime,
+      outLadleTime: selected.outLadleTime,
+      inLadleWeight: selected.inLadleWeight,
+      outLadleWeight: selected.outLadleWeight,
+      outLadleTemperature: selected.outLadleTemperature,
+      lastMaintenanceTime: selected.lastMaintenanceTime,
+      totalUsageCount: selected.totalUsageCount,
+      currentStatus: selected.currentStatus,
+    });
   };
 
   const cancelEdit = () => {
@@ -164,7 +217,7 @@ export default function LadleManagement() {
   const totalPages = Math.max(1, Math.ceil(total / 10));
 
   const submitCreate = async () => {
-    const payload = { ...form, ladleNo: form.ladleNo.trim() };
+    const payload = buildLadleWritePayload(form);
     if (!payload.ladleNo) {
       setNotice('请填写钢包号');
       return;
@@ -198,21 +251,21 @@ export default function LadleManagement() {
       setEditing(false);
       setForm(emptyForm());
       await loadList({ allowAutoSelect: true });
-      setNotice('接口异常，已在本地演示环境中创建');
+      setNotice('接口异常，已在本地创建');
     }
   };
 
   const submitUpdate = async () => {
     if (!selected) return;
-    const payload = { ...selected, ...form, id: selected.id };
+    const payload = buildLadleWritePayload({ ...selected, ...form }, selected.id);
 
     if (isMockOnly || canUseMockData) {
-      updateLadle(payload);
+      updateLadle({ ...payload, id: selected.id });
       setNotice(`已更新钢包 ${payload.ladleNo}`);
       setCreating(false);
       setEditing(false);
       void loadList({ allowAutoSelect: false });
-      void loadDetail(payload.id);
+      void loadDetail(selected.id);
       return;
     }
 
@@ -227,11 +280,11 @@ export default function LadleManagement() {
       setCreating(false);
       setEditing(false);
       void loadList({ allowAutoSelect: false });
-      void loadDetail(payload.id);
+      void loadDetail(selected.id);
     } catch {
-      updateLadle(payload);
-      setNotice('接口异常，已在本地演示环境中更新');
-      void loadDetail(payload.id);
+      updateLadle({ ...payload, id: selected.id });
+      setNotice('接口异常，已在本地更新');
+      void loadDetail(selected.id);
     }
   };
 
@@ -256,7 +309,7 @@ export default function LadleManagement() {
       void loadList();
     } catch {
       deleteLadles([selected.id]);
-      setNotice('接口异常，已在本地演示环境中删除');
+      setNotice('接口异常，已在本地删除');
       void loadList();
     }
   };
@@ -307,7 +360,7 @@ export default function LadleManagement() {
           </div>
           <div className={styles.tableWrap}>
             <table>
-              <thead><tr><th>包号</th><th>状态</th><th>累计使用</th><th>最近温度</th><th>上次检修</th></tr></thead>
+              <thead><tr><th>包号</th><th>状态</th><th>累计使用</th><th>出包温度</th><th>上次检修</th></tr></thead>
               <tbody>
                 {rows.map((asset) => (
                   <tr
@@ -322,7 +375,7 @@ export default function LadleManagement() {
                     <td><b>{asset.ladleNo}</b><small>ID {asset.id}</small></td>
                     <td><span className={`${styles.badge} ${styles[statusClass[asset.currentStatus]]}`}>{ladleStatusLabels[asset.currentStatus]}</span></td>
                     <td>{asset.totalUsageCount} 次</td>
-                    <td>{asset.latestTemperature}°C</td>
+                    <td>{asset.outLadleTemperature}℃</td>
                     <td>{asset.lastMaintenanceTime}</td>
                   </tr>
                 ))}
@@ -345,11 +398,12 @@ export default function LadleManagement() {
               <div className={styles.detailHead}><div><span>{creating ? '新建钢包' : '编辑钢包'}</span><h3>{form.ladleNo || '待填写'}</h3></div></div>
               <div className={styles.filters} style={{ flexDirection: 'column' }}>
                 <label>钢包号<input value={form.ladleNo} onChange={(event) => setForm((current) => ({ ...current, ladleNo: event.target.value }))} /></label>
-                <label>投产时间<input value={form.productionDate} onChange={(event) => setForm((current) => ({ ...current, productionDate: event.target.value }))} /></label>
-                <label>计划寿命<input type="number" value={form.plannedLifespan} onChange={(event) => setForm((current) => ({ ...current, plannedLifespan: Number(event.target.value) }))} /></label>
-                <label>剩余寿命<input type="number" value={form.estimatedRemainingLife} onChange={(event) => setForm((current) => ({ ...current, estimatedRemainingLife: Number(event.target.value) }))} /></label>
-                <label>最近温度<input type="number" value={form.latestTemperature} onChange={(event) => setForm((current) => ({ ...current, latestTemperature: event.target.value }))} /></label>
-                <label>累计使用<input type="number" value={form.totalUsageCount} onChange={(event) => setForm((current) => ({ ...current, totalUsageCount: Number(event.target.value) }))} /></label>
+                <label>进包时间<input value={form.inLadleTime} onChange={(event) => setForm((current) => ({ ...current, inLadleTime: event.target.value }))} /></label>
+                <label>出包时间<input value={form.outLadleTime} onChange={(event) => setForm((current) => ({ ...current, outLadleTime: event.target.value }))} /></label>
+                <label>进包重量（吨）<input type="number" step="0.1" value={form.inLadleWeight} onChange={(event) => setForm((current) => ({ ...current, inLadleWeight: toFiniteNumber(event.target.value) }))} /></label>
+                <label>出包重量（吨）<input type="number" step="0.1" value={form.outLadleWeight} onChange={(event) => setForm((current) => ({ ...current, outLadleWeight: toFiniteNumber(event.target.value) }))} /></label>
+                <label>出包温度（℃）<input type="number" step="1" value={form.outLadleTemperature} onChange={(event) => setForm((current) => ({ ...current, outLadleTemperature: Math.round(toFiniteNumber(event.target.value)) }))} /></label>
+                <label>累计使用<input type="number" value={form.totalUsageCount} onChange={(event) => setForm((current) => ({ ...current, totalUsageCount: Math.round(toFiniteNumber(event.target.value)) }))} /></label>
                 <label>上次检修<input value={form.lastMaintenanceTime} onChange={(event) => setForm((current) => ({ ...current, lastMaintenanceTime: event.target.value }))} /></label>
                 <label>
                   状态
@@ -369,14 +423,14 @@ export default function LadleManagement() {
               <p className={styles.statusText}>最近更新 {selected.updateTime ?? selected.createTime ?? formatLadleDateTime(new Date())}</p>
               <div className={styles.metrics}>
                 <div><span>累计使用</span><b>{selected.totalUsageCount}<small>次</small></b></div>
-                <div><span>剩余寿命预估</span><b>{selected.estimatedRemainingLife}<small>次</small></b></div>
-                <div><span>计划寿命</span><b>{selected.plannedLifespan}<small>次</small></b></div>
-                <div><span>最近温度</span><b>{selected.latestTemperature}<small>°C</small></b></div>
+                <div><span>进包重量</span><b>{selected.inLadleWeight.toFixed(1)}<small>吨</small></b></div>
+                <div><span>出包重量</span><b>{selected.outLadleWeight.toFixed(1)}<small>吨</small></b></div>
+                <div><span>出包温度</span><b>{selected.outLadleTemperature}<small>℃</small></b></div>
               </div>
               <dl>
-                <div><dt>投产日期</dt><dd>{selected.productionDate}</dd></div>
-                <div><dt>上次检修</dt><dd>{selected.lastMaintenanceTime}</dd></div>
-                <div><dt>创建时间</dt><dd>{selected.createTime ?? '—'}</dd></div>
+                <div><dt>进包时间</dt><dd>{selected.inLadleTime || '—'}</dd></div>
+                <div><dt>出包时间</dt><dd>{selected.outLadleTime || '—'}</dd></div>
+                <div><dt>上次检修</dt><dd>{selected.lastMaintenanceTime || '—'}</dd></div>
                 <div><dt>记录 ID</dt><dd>{selected.id}</dd></div>
               </dl>
               <section className={styles.plan}>

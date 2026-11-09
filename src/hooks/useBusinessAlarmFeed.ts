@@ -7,6 +7,7 @@ import {
   isMockOnly,
   unwrapApiData,
 } from '@/lib/api-config';
+import { getTroughMonitorPoint } from '@/data/trough-monitor-points';
 import type {
   BusinessAlarmFeed,
   BusinessAlarmFeedSource,
@@ -33,7 +34,7 @@ const DOCUMENTED_HIGH_TEMP_ALARM: RawBusinessAlarm = {
   minTemp: 26.3,
   maxTemp: 73.1,
   thresholdTemp: 50.0,
-  locationName: '第六排左侧后',
+  locationName: getTroughMonitorPoint('loc_1')?.locationName ?? 'loc_1',
   isRead: 0,
   processor: null,
   processContent: null,

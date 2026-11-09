@@ -12,7 +12,7 @@ import {
   Flame,
   type LucideIcon,
 } from 'lucide-react';
-import { isLadleProductMode, isTroughProductMode } from '@/lib/product-mode';
+import { isLadleProductMode } from '@/lib/product-mode';
 
 interface NavItem {
   id: string;
@@ -27,14 +27,12 @@ const navItems: NavItem[] = [
   { id: 'reports', name: '报表分析', icon: FileBarChart },
   { id: 'alarms', name: '告警中心', icon: Bell },
   { id: 'settings', name: '查询周报', icon: FileSearch },
-  { id: 'manual', name: '用户使用手册', icon: BookOpen },
+  { id: 'manual', name: '使用手册', icon: BookOpen },
 ];
 
-const visibleNavItems = isTroughProductMode
-  ? navItems.filter((item) => item.id !== 'manual')
-  : isLadleProductMode
-    ? navItems.filter((item) => item.id !== 'devices')
-    : navItems;
+const visibleNavItems = isLadleProductMode
+  ? navItems.filter((item) => item.id !== 'devices')
+  : navItems;
 
 interface SidebarProps {
   activeNav: string;

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>钢包点云画面流畅度测试报告</title>
+<style>
+  :root {
+    --bg: #181818;
+    --surface: #1f1f1f;
+    --fill: rgba(228, 228, 228, 0.04);
+    --stripe: rgba(228, 228, 228, 0.03);
+    --stroke: rgba(228, 228, 228, 0.12);
+    --stroke-strong: rgba(228, 228, 228, 0.22);
+    --text: #e4e4e4;
+    --text-2: rgba(228, 228, 228, 0.72);
+    --text-3: rgba(228, 228, 228, 0.5);
+    --green: #3fa266;
+    --yellow: #f1b467;
+    --red: #fc6b83;
+    --blue: #7bafe9;
+    --gray: rgba(228, 228, 228, 0.54);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 32px 28px 48px; display: flex; flex-direction: column; gap: 24px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  h2 { font-size: 16px; margin: 0; font-weight: 600; }
+  p { margin: 0; }
+  .muted { color: var(--text-2); }
+  .small { font-size: 12px; }
+  .caption { font-size: 12px; color: var(--text-3); }
+  .section { display: flex; flex-direction: column; gap: 10px; }
+  .divider { height: 1px; background: var(--stroke); }
+
+  .callout { border: 1px solid var(--stroke); background: var(--fill); border-radius: 8px; padding: 12px 14px; display: flex; gap: 10px; }
+  .callout-icon { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--blue); color: var(--blue); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; margin-top: 2px; }
+  .callout-title { font-weight: 600; margin-bottom: 2px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  .stat-value { font-size: 22px; font-weight: 600; line-height: 1.3; }
+  .stat-label { font-size: 12px; color: var(--text-2); }
+
+  .glossary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .term { border: 1px solid var(--stroke); border-radius: 6px; padding: 10px 12px; }
+  .term b { font-weight: 600; display: block; }
+  .term span { font-size: 12px; color: var(--text-2); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  .matrix { display: grid; grid-template-columns: 110px repeat(3, minmax(0, 1fr)) 12px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+  .group { grid-column: span 3; text-align: center; font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--stroke-strong); padding-bottom: 4px; }
+  .head { text-align: center; padding: 4px 0; }
+  .head .t { font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .head .t.strong { color: var(--text); }
+  .head .b { font-size: 11px; color: var(--text-3); }
+  .row-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+  .cell { border: 1px solid var(--stroke); border-left-width: 3px; border-radius: 4px; padding: 6px 8px; background: var(--fill); text-align: center; }
+  .cell .avg { font-weight: 600; font-size: 14px; }
+  .cell .min { font-size: 11px; color: var(--text-3); }
+
+  .chart-wrap { border: 1px solid var(--stroke); border-radius: 8px; padding: 12px 12px 8px; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; }
+  .chart-legend .legend-item .swatch { width: 12px; height: 3px; border-radius: 2px; }
+  svg text { font-family: inherit; }
+
+  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--stroke); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; vertical-align: top; font-size: 12px; }
+  th { color: var(--text-2); font-weight: 600; border-bottom: 1px solid var(--stroke); }
+  td { border-bottom: 1px solid var(--stroke); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: var(--stripe); }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+  @media (max-width: 760px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .glossary { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="section" style="gap:6px">
+    <h1>钢包点云画面流畅度测试报告</h1>
+    <p class="muted">在网页上显示钢包内壁的雷达扫描点云时，哪些因素会让画面卡顿。</p>
+  </div>
+
+  <div class="callout">
+    <div class="callout-icon">i</div>
+    <div>
+      <div class="callout-title">结论</div>
+      <p>让画面卡顿的头号原因是“半透明效果”，而不是点太多，也不是显存不够。关闭半透明会让画面少一些通透感和层次感，但换来的是流畅度的大幅提升：282 万个点在任何清晰度下都能稳定在每秒 60 帧。第二个原因是同时开着多个三维页面，它们会抢占同一块显卡。</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div><div class="stat-value" style="color:var(--green)">60 帧/秒</div><div class="stat-label">关掉半透明，全部 282 万点</div></div>
+    <div><div class="stat-value" style="color:var(--red)">17 帧/秒</div><div class="stat-label">开着半透明，全部 282 万点</div></div>
+    <div><div class="stat-value" style="color:var(--red)">6 帧/秒</div><div class="stat-label">开两个三维页面，只有 10 万点</div></div>
+    <div><div class="stat-value">34 MB</div><div class="stat-label">全部点占用的显存，不是瓶颈</div></div>
+  </div>
+
+  <div class="section">
+    <h2>名词解释</h2>
+    <div class="glossary">
+      <div class="term"><b>帧率（FPS）</b><span>画面每秒刷新的次数，数值越高越流畅。60 帧拖动顺滑，低于 30 帧会明显感到卡顿。</span></div>
+      <div class="term"><b>点数</b><span>雷达扫描钢包内壁得到的测量点数量，每个点对应内壁上的一个位置。本次测试文件共 282 万个点。</span></div>
+      <div class="term"><b>DPR（清晰度倍数）</b><span>同样大小的画面用多少像素来绘制。1 为标准清晰度，2 为高清，数值越高画面越细腻。</span></div>
+      <div class="term"><b>半透明效果</b><span>让点呈半透明状态，前后的点可以相互透出，画面更有通透感。代价是重叠的点需要逐层叠加计算，点数越多越吃力。</span></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <h2>帧率矩阵：点数 × DPR × 半透明</h2>
+    <p class="small muted">每一行是显示的点数，每一列是一种设置组合。格子里的数字是“平均帧率 / 最低帧率”，颜色越绿越顺滑，越红越卡。</p>
+    <div class="legend">
+      <div class="legend-item"><div class="swatch" style="background:var(--green)"></div>≥ 50 FPS：流畅</div>
+      <div class="legend-item"><div class="swatch" style="background:var(--yellow)"></div>30–50 FPS：可用，拖拽有轻微拖影</div>
+      <div class="legend-item"><div class="swatch" style="background:var(--red)"></div>&lt; 30 FPS：明显卡顿，拖动时画面跟不上手</div>
+    </div>
+    <div class="matrix" id="matrix"></div>
+    <p class="caption">数据来源：页面内“一键压测”，MacBook M3 实测，2026-09-29。开半透明的情况重复测了 3 轮，结果一致；关半透明的所有格子都在 58 帧以上。列标题下方的数字是实际绘制的像素尺寸。</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <h2>半透明模式下帧率随点数的变化</h2>
+    <p class="small muted">线越往下越卡。绿线是关掉半透明，始终保持 60 帧；另外三条是开着半透明，点一多就往下掉。</p>
+    <div class="chart-wrap">
+      <svg id="chart" viewBox="0 0 1000 300" width="100%" role="img" aria-label="半透明模式下帧率随点数的变化"></svg>
+      <div class="chart-legend" id="chart-legend"></div>
+    </div>
+    <p class="caption">横轴：显示的点数；纵轴：平均帧率（帧/秒）。</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <h2>影响因素</h2>
+    <table>
+      <thead>
+        <tr><th>因素</th><th>影响大小</th><th>原因</th><th>测试结果</th><th>怎么处理</th></tr>
+      </thead>
+      <tbody id="factors"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const POINT_LEVELS = ["10万", "30万", "50万", "100万", "150万", "200万", "282万（全量）"];
+  const TRANSPARENT = {
+    "1":   [[60, 60], [60, 60], [56, 50], [32, 29], [21, 21], [20, 17], [17, 16]],
+    "1.5": [[60, 58], [60, 58], [60, 60], [58, 56], [47, 45], [34, 28], [20, 20]],
+    "2":   [[60, 60], [60, 60], [60, 60], [60, 58], [58, 56], [47, 43], [34, 33]],
+  };
+  const OPAQUE = [60, 58];
+  const DPRS = [
+    { key: "1", label: "DPR 1", buffer: "656×480" },
+    { key: "1.5", label: "DPR 1.5", buffer: "984×720" },
+    { key: "2", label: "DPR 2", buffer: "1312×960" },
+  ];
+  const color = (fps) => (fps >= 50 ? "var(--green)" : fps >= 30 ? "var(--yellow)" : "var(--red)");
+  const cell = ([avg, min]) =>
+    `<div class="cell" style="border-left-color:${color(avg)}"><span class="avg" style="color:${color(avg)}">${avg}</span><span class="min"> / ${min}</span></div>`;
+  const head = (t, b, strong) =>
+    `<div class="head"><div class="t${strong ? " strong" : ""}">${t}</div>${b ? `<div class="b">${b}</div>` : ""}</div>`;
+
+  let html = `<div></div><div class="group">半透明混合 开启</div><div></div><div class="group">半透明混合 关闭（不透明）</div>`;
+  html += head("渲染点数", "", true);
+  DPRS.forEach((d) => (html += head(d.label, d.buffer)));
+  html += "<div></div>";
+  DPRS.forEach((d) => (html += head(d.label, d.buffer)));
+  POINT_LEVELS.forEach((level, i) => {
+    html += `<div class="row-label">${level}</div>`;
+    DPRS.forEach((d) => (html += cell(TRANSPARENT[d.key][i])));
+    html += "<div></div>";
+    DPRS.forEach(() => (html += cell(OPAQUE)));
+  });
+  document.getElementById("matrix").innerHTML = html;
+
+  const series = [
+    { name: "半透明 · DPR 1", data: TRANSPARENT["1"].map((c) => c[0]), color: "#fc6b83" },
+    { name: "半透明 · DPR 1.5", data: TRANSPARENT["1.5"].map((c) => c[0]), color: "#f1b467" },
+    { name: "半透明 · DPR 2", data: TRANSPARENT["2"].map((c) => c[0]), color: "#7bafe9" },
+    { name: "不透明 · 任意 DPR", data: POINT_LEVELS.map(() => 60), color: "#3fa266" },
+  ];
+  const W = 1000, H = 300, L = 48, R = 56, T = 14, B = 34, YMAX = 65;
+  const x = (i) => L + (i * (W - L - R)) / (POINT_LEVELS.length - 1);
+  const y = (v) => T + (1 - v / YMAX) * (H - T - B);
+  let svg = "";
+  [0, 10, 20, 30, 40, 50, 60].forEach((v) => {
+    svg += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(228,228,228,0.08)"/>`;
+    svg += `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="rgba(228,228,228,0.5)">${v}</text>`;
+  });
+  [
+    { v: 50, label: "流畅线 50", c: "#3fa266" },
+    { v: 30, label: "卡顿线 30", c: "#fc6b83" },
+  ].forEach((r) => {
+    svg += `<line x1="${L}" x2="${W - R}" y1="${y(r.v)}" y2="${y(r.v)}" stroke="${r.c}" stroke-dasharray="5 4" stroke-opacity="0.7"/>`;
+    svg += `<text x="${L + 6}" y="${y(r.v) + 14}" text-anchor="start" font-size="11" fill="${r.c}">${r.label}</text>`;
+  });
+  POINT_LEVELS.forEach((label, i) => {
+    svg += `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="rgba(228,228,228,0.5)">${label}</text>`;
+  });
+  svg += `<line id="guide" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="rgba(228,228,228,0.35)" stroke-dasharray="3 3" visibility="hidden"/>`;
+  series.forEach((s, si) => {
+    const pts = s.data.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+    svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    s.data.forEach((v, i) => {
+      svg += `<circle class="pt pt-${i}" cx="${x(i)}" cy="${y(v)}" r="3" fill="${s.color}"/>`;
+    });
+  });
+  const step = (W - L - R) / (POINT_LEVELS.length - 1);
+  POINT_LEVELS.forEach((_, i) => {
+    svg += `<rect class="hit" data-i="${i}" x="${x(i) - step / 2}" y="${T}" width="${step}" height="${H - T - B}" fill="transparent"/>`;
+  });
+  const chartEl = document.getElementById("chart");
+  chartEl.innerHTML = svg;
+
+  const wrap = chartEl.parentElement;
+  wrap.style.position = "relative";
+  const tip = document.createElement("div");
+  tip.style.cssText =
+    "position:absolute;pointer-events:none;display:none;background:#252525;border:1px solid rgba(228,228,228,0.18);border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.7;white-space:nowrap;z-index:2";
+  wrap.appendChild(tip);
+  const guide = chartEl.querySelector("#guide");
+  const showAt = (i) => {
+    guide.setAttribute("x1", x(i));
+    guide.setAttribute("x2", x(i));
+    guide.setAttribute("visibility", "visible");
+    chartEl.querySelectorAll(".pt").forEach((c) => c.setAttribute("r", "3"));
+    chartEl.querySelectorAll(`.pt-${i}`).forEach((c) => c.setAttribute("r", "5"));
+    tip.innerHTML =
+      `<div style="font-weight:600;margin-bottom:2px">${POINT_LEVELS[i]}</div>` +
+      series
+        .map(
+          (s) =>
+            `<div style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${s.color}"></span><span style="color:rgba(228,228,228,0.72)">${s.name}</span><span style="margin-left:auto;padding-left:12px;font-weight:600">${s.data[i]} FPS</span></div>`
+        )
+        .join("");
+    tip.style.display = "block";
+    const box = chartEl.getBoundingClientRect();
+    const wrapBox = wrap.getBoundingClientRect();
+    const px = box.left - wrapBox.left + (x(i) / W) * box.width;
+    const left = px + 12 + tip.offsetWidth > wrapBox.width ? px - tip.offsetWidth - 12 : px + 12;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${box.top - wrapBox.top + 16}px`;
+  };
+  chartEl.querySelectorAll(".hit").forEach((r) => r.addEventListener("mouseenter", () => showAt(Number(r.dataset.i))));
+  chartEl.addEventListener("mouseleave", () => {
+    tip.style.display = "none";
+    guide.setAttribute("visibility", "hidden");
+    chartEl.querySelectorAll(".pt").forEach((c) => c.setAttribute("r", "3"));
+  });
+  document.getElementById("chart-legend").innerHTML = series
+    .map((s) => `<div class="legend-item"><div class="swatch" style="background:${s.color}"></div>${s.name}</div>`)
+    .join("");
+
+  const TONES = { danger: "var(--red)", warning: "var(--yellow)", info: "var(--blue)", neutral: "var(--gray)" };
+  const FACTORS = [
+    ["danger", "半透明效果", "非常大", "每个点都要和后面的点叠加颜色，点越多越费力", "全部 282 万点：开半透明每秒 17～34 帧，关掉后每秒 60 帧", "画质影响较小，待有雷达探伤数据还需真实测试一下"],
+    ["danger", "同时打开多个三维页面", "非常大", "多个页面抢同一块显卡", "开两个雷达页时，仅 10 万点也只有每秒 6 帧；关掉一个立刻恢复 60 帧", "页面没人操作时自动停止绘制"],
+    ["warning", "点的数量", "大（只在开半透明时明显）", "点越多，一帧要画的东西越多", "开半透明时：50 万点每秒 56 帧，100 万点降到 32 帧；关半透明时 282 万点仍是 60 帧", "点数只影响画面显示；探伤计算必须用全部数据"],
+    ["warning", "清晰度（DPR）", "中等（开半透明时反而是越低越卡）", "开半透明时，清晰度越低，点越挤在一起，叠加越多", "开半透明、全部点：标准清晰度 17 帧，高清 34 帧；关半透明时都是 60 帧", "关掉半透明后，按需要选清晰度即可"],
+    ["warning", "画面缩放远近", "中等（只在开半透明时）", "缩得越小，点越挤在一起，效果和调低清晰度一样", "开半透明、标准清晰度、缩小画面：约每秒 10 帧（正常视角约 17 帧）", "关掉半透明即可解决"],
+    ["info", "电脑显卡的强弱", "大", "显卡决定电脑画图的速度", "在我 Mac 上测试流畅", "如服务器为高配电脑，问题不大"],
+    ["neutral", "显存大小（2G / 4G / 8G）", "很小", "全部 282 万点只占约 34 MB，远小于 2G", "不是卡顿的主要原因", "不需要按显存区分电脑"],
+    ["neutral", "屏幕刷新率", "只决定上限", "普通屏幕每秒最多显示 60 帧", "所以满足 60 帧即可", "不需要处理，60 帧已经很流畅"],
+  ];
+  document.getElementById("factors").innerHTML = FACTORS.map(
+    ([tone, ...cells]) =>
+      `<tr>${cells
+        .map((c, i) => `<td>${i === 0 ? `<span class="dot" style="background:${TONES[tone]}"></span>` : ""}${c}</td>`)
+        .join("")}</tr>`
+  ).join("");
+</script>
+</body>
+</html>

@@ -16,7 +16,10 @@ import type {
   LadleRecordListQuery,
   LadleRecordRow,
   LadleTempResult,
+  LadleWritePayload,
 } from '@/types/ladle-api';
+import { buildBenxiAlarmRecords, buildBenxiLadleEntities, buildBenxiThermalRecords } from '@/data/benxi-ladle-mock';
+import { isBenxiSuiteEnabled } from '@/lib/product-mode';
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -47,7 +50,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 1,
     ladleNo: 'Y-111',
-    deviceName: '1-1',
+    deviceName: '南1_1',
     maxTemp: 300,
     minTemp: 100,
     avgTemp: 200,
@@ -57,7 +60,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 2,
     ladleNo: 'Y-111',
-    deviceName: '2-1',
+    deviceName: '南2_1',
     maxTemp: 310,
     minTemp: 110,
     avgTemp: 205,
@@ -67,7 +70,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 3,
     ladleNo: 'Y-111',
-    deviceName: '3-1',
+    deviceName: '北1_1',
     maxTemp: 320,
     minTemp: 120,
     avgTemp: 210,
@@ -77,7 +80,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 4,
     ladleNo: 'Y-121',
-    deviceName: '1-1',
+    deviceName: '南1_1',
     maxTemp: 295,
     minTemp: 105,
     avgTemp: 198,
@@ -87,7 +90,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 5,
     ladleNo: 'Y-121',
-    deviceName: '2-1',
+    deviceName: '南2_1',
     maxTemp: 305,
     minTemp: 115,
     avgTemp: 203,
@@ -97,7 +100,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 6,
     ladleNo: 'Y-121',
-    deviceName: '3-1',
+    deviceName: '北1_1',
     maxTemp: 315,
     minTemp: 125,
     avgTemp: 208,
@@ -107,7 +110,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 7,
     ladleNo: 'Y-131',
-    deviceName: '1-1',
+    deviceName: '南1_1',
     maxTemp: 288,
     minTemp: 98,
     avgTemp: 192,
@@ -117,7 +120,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 8,
     ladleNo: 'Y-131',
-    deviceName: '2-1',
+    deviceName: '南2_1',
     maxTemp: 298,
     minTemp: 108,
     avgTemp: 197,
@@ -127,7 +130,7 @@ const mockRecordDetails: LadleRecordDetail[] = [
   {
     id: 9,
     ladleNo: 'Y-131',
-    deviceName: '3-1',
+    deviceName: '北1_1',
     maxTemp: 308,
     minTemp: 118,
     avgTemp: 202,
@@ -147,32 +150,46 @@ const aggregateRecords = (details: LadleRecordDetail[]): LadleRecordRow[] => {
   });
 
   return Array.from(groups.values()).map((items) => {
-    const temps = items.flatMap((item) => [item.maxTemp, item.minTemp, item.avgTemp].filter((value) => value > 0));
+    const temps = items
+      .flatMap((item) => [item.maxTemp, item.minTemp, item.avgTemp])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    const maxTemps = items
+      .map((item) => item.maxTemp)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     return {
       id: null,
       ladleNo: items[0].ladleNo,
       deviceName: items.map((item) => item.deviceName).join(', '),
-      maxTemp: Math.max(...items.map((item) => item.maxTemp)),
-      minTemp: Math.min(...temps),
-      avgTemp: Number((temps.reduce((sum, value) => sum + value, 0) / temps.length).toFixed(6)),
+      maxTemp: maxTemps.length > 0 ? Math.max(...maxTemps) : null,
+      minTemp: temps.length > 0 ? Math.min(...temps) : null,
+      avgTemp: temps.length > 0
+        ? Number((temps.reduce((sum, value) => sum + value, 0) / temps.length).toFixed(6))
+        : null,
       recordTime: items[0].recordTime,
       createTime: null,
     };
   });
 };
 
-let mockRecordStore = [...mockRecordDetails];
-let mockLadleStore: LadleEntity[] = [
+const demoCurrentLadleNo = isBenxiSuiteEnabled ? 'A05' : 'Y-111';
+
+/** 本溪演示数据按全部在役钢包生成近 7 天测温记录，与报表、告警保持一致。 */
+const mockRecordStore = isBenxiSuiteEnabled
+  ? buildBenxiThermalRecords(THERMAL_DEVICE_NAMES, demoCurrentLadleNo)
+  : [...mockRecordDetails];
+const shanxiMockLadles: LadleEntity[] = [
   {
     id: 1,
     ladleNo: 'Y-111',
-    productionDate: '2026-07-20',
-    plannedLifespan: 500,
-    estimatedRemainingLife: 400,
-    latestTemperature: '300',
+    inLadleTime: '2026-07-20',
+    outLadleTime: '2026-07-21',
+    inLadleWeight: 2.1,
+    outLadleWeight: 2.0,
+    outLadleTemperature: 300,
     lastMaintenanceTime: '2026-07-30',
     totalUsageCount: 100,
     currentStatus: '1',
+    postMaintenanceUsageCount: 2,
     createBy: '',
     createTime: '2026-07-30 16:18:34',
     updateBy: '',
@@ -182,13 +199,15 @@ let mockLadleStore: LadleEntity[] = [
   {
     id: 2,
     ladleNo: 'Y-121',
-    productionDate: '2026-06-15',
-    plannedLifespan: 500,
-    estimatedRemainingLife: 360,
-    latestTemperature: '305',
+    inLadleTime: '2026-06-15',
+    outLadleTime: '2026-06-16',
+    inLadleWeight: 2.3,
+    outLadleWeight: 2.1,
+    outLadleTemperature: 305,
     lastMaintenanceTime: '2026-07-28',
     totalUsageCount: 140,
     currentStatus: '3',
+    postMaintenanceUsageCount: 0,
     createBy: '',
     createTime: '2026-07-28 10:12:00',
     updateBy: '',
@@ -198,13 +217,15 @@ let mockLadleStore: LadleEntity[] = [
   {
     id: 3,
     ladleNo: 'Y-131',
-    productionDate: '2026-05-01',
-    plannedLifespan: 500,
-    estimatedRemainingLife: 420,
-    latestTemperature: '298',
+    inLadleTime: '2026-05-01',
+    outLadleTime: '2026-05-02',
+    inLadleWeight: 2.0,
+    outLadleWeight: 1.9,
+    outLadleTemperature: 298,
     lastMaintenanceTime: '2026-07-25',
     totalUsageCount: 80,
     currentStatus: '1',
+    postMaintenanceUsageCount: 1,
     createBy: '',
     createTime: '2026-07-25 09:00:00',
     updateBy: '',
@@ -212,6 +233,8 @@ let mockLadleStore: LadleEntity[] = [
     remark: null,
   },
 ];
+
+let mockLadleStore: LadleEntity[] = isBenxiSuiteEnabled ? buildBenxiLadleEntities() : shanxiMockLadles;
 
 const mockAlarmSeeds: Array<[string, string, LadleAlarmRecord['level'], number, LadleAlarmReadState]> = [
   ['Y-111', '11_1', '1', 0, 0],
@@ -221,7 +244,7 @@ const mockAlarmSeeds: Array<[string, string, LadleAlarmRecord['level'], number, 
   ['Y-141', '12_1', '1', 0, 0],
 ];
 
-let mockAlarmStore: LadleAlarmRecord[] = mockAlarmSeeds.map((seed, index) => {
+const shanxiMockAlarms: LadleAlarmRecord[] = mockAlarmSeeds.map((seed, index) => {
   const [ladleNo, channelName, level, num, isRead] = seed;
   const sequence = String(index + 1).padStart(2, '0');
   const processed = isRead === 1;
@@ -248,6 +271,8 @@ let mockAlarmStore: LadleAlarmRecord[] = mockAlarmSeeds.map((seed, index) => {
   };
 });
 
+let mockAlarmStore: LadleAlarmRecord[] = isBenxiSuiteEnabled ? buildBenxiAlarmRecords() : shanxiMockAlarms;
+
 let inferenceCount = 47;
 let modbusTick = 0;
 
@@ -269,7 +294,7 @@ export function createMockModbusPayload(tick = modbusTick): LadleModbusPayload {
   }));
 
   return {
-    currentLadleNo: hasLadle ? 'Y-111' : null,
+    currentLadleNo: hasLadle ? demoCurrentLadleNo : null,
     tempResults,
   };
 }
@@ -298,9 +323,9 @@ export function queryLadleRecordList(query: LadleRecordListQuery): LadlePagedRow
       const devices = query.deviceNameList.split(',').map((item) => item.trim()).filter(Boolean);
       if (devices.length > 0 && !devices.some((device) => row.deviceName.includes(device))) return false;
     }
-    if (query.maxTemp !== undefined && row.maxTemp < query.maxTemp) return false;
-    if (query.minTemp !== undefined && row.minTemp < query.minTemp) return false;
-    if (query.avgTemp !== undefined && row.avgTemp < query.avgTemp) return false;
+    if (query.maxTemp !== undefined && (row.maxTemp == null || row.maxTemp < query.maxTemp)) return false;
+    if (query.minTemp !== undefined && (row.minTemp == null || row.minTemp < query.minTemp)) return false;
+    if (query.avgTemp !== undefined && (row.avgTemp == null || row.avgTemp < query.avgTemp)) return false;
     if (query.startTime && row.recordTime < query.startTime) return false;
     if (query.endTime && row.recordTime > query.endTime) return false;
     return true;
@@ -353,13 +378,14 @@ export function queryLadleChartList(query: LadleChartQuery): LadleApiResponse<La
       if (query.ladleNo && row.ladleNo !== query.ladleNo) return false;
       if (query.startTime && row.recordTime < query.startTime) return false;
       if (query.endTime && row.recordTime > query.endTime) return false;
+      if (row.maxTemp == null || row.minTemp == null || row.avgTemp == null) return false;
       return true;
     })
     .map((row) => ({
       ladleNo: row.ladleNo,
-      maxTemp: row.maxTemp,
-      minTemp: row.minTemp,
-      avgTemp: row.avgTemp,
+      maxTemp: row.maxTemp as number,
+      minTemp: row.minTemp as number,
+      avgTemp: row.avgTemp as number,
       recordTime: row.recordTime,
     }));
 
@@ -378,12 +404,10 @@ function filterLadles(query: LadleListQuery) {
   return mockLadleStore.filter((ladle) => {
     if (query.ladleNo && !ladle.ladleNo.includes(query.ladleNo)) return false;
     if (query.currentStatus && ladle.currentStatus !== query.currentStatus) return false;
-    if (query.productionDate && ladle.productionDate !== query.productionDate) return false;
-    if (query.plannedLifespan !== undefined && ladle.plannedLifespan !== query.plannedLifespan) return false;
-    if (query.estimatedRemainingLife !== undefined && ladle.estimatedRemainingLife !== query.estimatedRemainingLife) return false;
-    if (query.latestTemperature !== undefined && ladle.latestTemperature !== query.latestTemperature) return false;
     if (query.lastMaintenanceTime && ladle.lastMaintenanceTime !== query.lastMaintenanceTime) return false;
     if (query.totalUsageCount !== undefined && ladle.totalUsageCount !== query.totalUsageCount) return false;
+    if (query.inLadleTime && ladle.inLadleTime !== query.inLadleTime) return false;
+    if (query.outLadleTime && ladle.outLadleTime !== query.outLadleTime) return false;
     return true;
   });
 }
@@ -414,14 +438,45 @@ export function getLadleById(id: number): LadleApiResponse<LadleEntity> {
   return createSuccess({ ...entity });
 }
 
-export function createLadle(payload: Omit<LadleEntity, 'id'>): LadleApiResponse<null> {
+const writePayloadToEntity = (payload: LadleWritePayload, id: number): LadleEntity => ({
+  id,
+  ladleNo: payload.ladleNo,
+  inLadleTime: payload.inLadleTime,
+  outLadleTime: payload.outLadleTime,
+  inLadleWeight: Number(Number(payload.inLadleWeight).toFixed(1)),
+  outLadleWeight: Number(Number(payload.outLadleWeight).toFixed(1)),
+  outLadleTemperature: Math.round(Number(payload.outLadleTemperature) || 0),
+  lastMaintenanceTime: payload.lastMaintenanceTime,
+  totalUsageCount: payload.totalUsageCount,
+  currentStatus: payload.currentStatus,
+  postMaintenanceUsageCount: 0,
+  createBy: '',
+  createTime: formatLadleDateTime(new Date()),
+  updateBy: '',
+  updateTime: null,
+  remark: null,
+});
+
+export function createLadle(payload: LadleWritePayload): LadleApiResponse<null> {
   const nextId = Math.max(0, ...mockLadleStore.map((item) => item.id)) + 1;
-  mockLadleStore = [{ ...payload, id: nextId }, ...mockLadleStore];
+  mockLadleStore = [writePayloadToEntity(payload, nextId), ...mockLadleStore];
   return createSuccess(null);
 }
 
-export function updateLadle(payload: LadleEntity): LadleApiResponse<null> {
-  mockLadleStore = mockLadleStore.map((item) => (item.id === payload.id ? { ...payload } : item));
+export function updateLadle(payload: LadleWritePayload & { id: number }): LadleApiResponse<null> {
+  const existing = mockLadleStore.find((item) => item.id === payload.id);
+  const next = writePayloadToEntity(payload, payload.id);
+  mockLadleStore = mockLadleStore.map((item) => (
+    item.id === payload.id
+      ? {
+          ...next,
+          createBy: existing?.createBy ?? '',
+          createTime: existing?.createTime,
+          postMaintenanceUsageCount: existing?.postMaintenanceUsageCount ?? 0,
+          updateTime: formatLadleDateTime(new Date()),
+        }
+      : item
+  ));
   return createSuccess(null);
 }
 
@@ -491,6 +546,14 @@ export function buildLadleListPath(query: LadleListQuery) {
     if (value !== undefined && value !== '') params.set(key, String(value));
   });
   return `/ladle/list?${params.toString()}`;
+}
+
+/** GET /ladle/listNoPage — 返回钢包号字符串数组，供下拉选项使用 */
+export function buildLadleListNoPagePath(ladleNo?: string) {
+  const params = new URLSearchParams();
+  if (ladleNo?.trim()) params.set('ladleNo', ladleNo.trim());
+  const query = params.toString();
+  return query ? `/ladle/listNoPage?${query}` : '/ladle/listNoPage';
 }
 
 export const ladleThermalDeviceLabels: Record<string, string> = {

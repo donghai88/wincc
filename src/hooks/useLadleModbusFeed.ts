@@ -129,7 +129,7 @@ export function useLadleModbusFeed(): LadleModbusFeed {
         socket = new WebSocket(buildWsUrl(MODBUS_WS_PATH));
       } catch {
         if (canUseMockData) {
-          startMockFeed('fallback', 'WebSocket 不可用，已切换演示数据');
+          startMockFeed('fallback', 'WebSocket 不可用，已切换备用数据');
         } else {
           updateFeed({ status: 'error', source: 'ws', message: 'WebSocket 连接失败', payload: null });
         }
@@ -155,7 +155,7 @@ export function useLadleModbusFeed(): LadleModbusFeed {
 
       socket.onerror = () => {
         if (canUseMockData) {
-          startMockFeed('fallback', '实时连接异常，已切换演示数据');
+          startMockFeed('fallback', '实时连接异常，已切换备用数据');
         } else {
           updateFeed({ status: 'error', source: 'ws', message: '实时连接异常', payload: null });
         }

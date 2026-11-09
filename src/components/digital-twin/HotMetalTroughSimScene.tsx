@@ -5,6 +5,11 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { ContactShadows, Grid, Html, Line, OrbitControls, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { SimulationLayer } from './HotMetalTroughSimTwin';
+import {
+  TROUGH_MONITOR_POINTS,
+  normalizeTroughLocationId,
+  resolveTroughAlarmLocationId,
+} from '@/data/trough-monitor-points';
 import type { DigitalTwinBusinessAlarm, DigitalTwinTemperaturePoint, ModbusFeedStatus } from '@/types/digital-twin';
 
 const MODEL_PATH = '/cad/langan.glb';
@@ -314,8 +319,8 @@ function Label({
 }
 
 interface SurfaceMonitorPoint {
-  /** Backend locationName, e.g. 第六排左侧后 — primary key for placement */
-  locationName: string;
+  /** Stable key shared with the server, e.g. loc_1. */
+  locationId: string;
   anchor: [number, number];
   rayOrigin: [number, number, number];
   rayDirection: [number, number, number];
@@ -324,17 +329,6 @@ interface SurfaceMonitorPoint {
 
 /** Cross-beam Z centers from CAD (pCube2…pCube9), tight → loose = row 1 → row 7. */
 const BEAM_Z_TIGHT_TO_LOOSE = [6.754, 5.537, 4.447, 3.358, 1.387, -0.845, -3.077, -6.581] as const;
-
-const ROW_CN = ['一', '二', '三', '四', '五', '六', '七'] as const;
-const CN_ROW_INDEX: Record<string, number> = {
-  一: 1,
-  二: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-};
 
 /**
  * Floor–wall junction: project straight down onto the trough floor
@@ -345,8 +339,6 @@ const FLOOR_WALL_JUNCTION_X = {
   左侧: 3.98,
   右侧: -3.98,
 } as const;
-
-const LOCATION_NAME_PATTERN = /^第([一二三四五六七])排(左侧|右侧)([前后])?$/;
 
 function rowGap(row: number) {
   const zStart = BEAM_Z_TIGHT_TO_LOOSE[row - 1];
@@ -366,75 +358,24 @@ function junctionAnchor(side: keyof typeof FLOOR_WALL_JUNCTION_X, z: number): Pi
 }
 
 function buildSurfaceMonitorPoints(): SurfaceMonitorPoint[] {
-  const points: SurfaceMonitorPoint[] = [];
+  return TROUGH_MONITOR_POINTS.map((monitorPoint) => {
+    const { mid, gap } = rowGap(monitorPoint.row);
+    // Row 6 carries two points in the bay: front toward tight (+Z), rear toward loose (−Z).
+    const z = monitorPoint.depth === '前'
+      ? mid + gap * 0.25
+      : monitorPoint.depth === '后'
+        ? mid - gap * 0.25
+        : mid;
 
-  for (let row = 1; row <= 7; row += 1) {
-    const cn = ROW_CN[row - 1];
-    const { mid, gap } = rowGap(row);
-
-    if (row === 6) {
-      // Four points evenly in the 6th bay: front toward tight (+Z), rear toward loose (−Z).
-      const frontZ = mid + gap * 0.25;
-      const rearZ = mid - gap * 0.25;
-      (['左侧', '右侧'] as const).forEach((side) => {
-        points.push({
-          locationName: `第${cn}排${side}前`,
-          ...junctionAnchor(side, frontZ),
-          radius: 0.12,
-        });
-        points.push({
-          locationName: `第${cn}排${side}后`,
-          ...junctionAnchor(side, rearZ),
-          radius: 0.12,
-        });
-      });
-      continue;
-    }
-
-    (['左侧', '右侧'] as const).forEach((side) => {
-      points.push({
-        locationName: `第${cn}排${side}`,
-        ...junctionAnchor(side, mid),
-        radius: 0.12,
-      });
-    });
-  }
-
-  return points;
+    return {
+      locationId: monitorPoint.locationId,
+      ...junctionAnchor(monitorPoint.side, z),
+      radius: 0.12,
+    };
+  });
 }
 
 const SURFACE_MONITOR_POINTS = buildSurfaceMonitorPoints();
-
-function parseLocationName(locationName: string) {
-  const match = locationName.trim().match(LOCATION_NAME_PATTERN);
-  if (!match) return null;
-  const row = CN_ROW_INDEX[match[1]];
-  if (!row) return null;
-  return {
-    row,
-    side: match[2] as '左侧' | '右侧',
-    depth: (match[3] as '前' | '后' | undefined) ?? null,
-  };
-}
-
-function getMonitorPointForLocationName(locationName?: string | null) {
-  if (!locationName) return null;
-  const trimmed = locationName.trim();
-  const exact = SURFACE_MONITOR_POINTS.find((monitorPoint) => monitorPoint.locationName === trimmed);
-  if (exact) return exact;
-
-  const parsed = parseLocationName(trimmed);
-  if (!parsed) return null;
-  return SURFACE_MONITOR_POINTS.find((monitorPoint) => {
-    const candidate = parseLocationName(monitorPoint.locationName);
-    return (
-      candidate
-      && candidate.row === parsed.row
-      && candidate.side === parsed.side
-      && candidate.depth === parsed.depth
-    );
-  }) ?? null;
-}
 
 function ModbusTemperatureSurfaceGrid({
   point,
@@ -456,16 +397,21 @@ function ModbusTemperatureSurfaceGrid({
   const isRetrying = status === 'retrying';
   const isConnectionIssue = isDisconnected || isRetrying;
   const isAlarm = Boolean(alarm) && !isConnectionIssue;
-  const alarmLocationName = isAlarm ? alarm?.locationName.trim() ?? '' : '';
-  const latestLocationName = point?.locationName.trim() ?? '';
+  const alarmLocationId = isAlarm ? resolveTroughAlarmLocationId(alarm?.locationName, points) : '';
+  const latestLocationId = point ? normalizeTroughLocationId(point.locationId) : '';
   // Abnormal highlight must follow the alarm location; otherwise fall back to latest push.
-  const highlightLocationName = alarmLocationName || latestLocationName;
-  const activeMonitorPoint = getMonitorPointForLocationName(highlightLocationName);
+  const highlightLocationId = alarmLocationId || latestLocationId;
+  const activeMonitorPoint = SURFACE_MONITOR_POINTS.find((monitorPoint) => monitorPoint.locationId === highlightLocationId) ?? null;
   const alarmColor = '#f97316';
-  const pointByLocationName = useMemo(
-    () => new Map(points.map((temperaturePoint) => [temperaturePoint.locationName.trim(), temperaturePoint])),
-    [points]
-  );
+  const pointByLocationId = useMemo(() => {
+    const map = new Map<string, DigitalTwinTemperaturePoint>();
+    points.forEach((temperaturePoint) => {
+      const locationId = normalizeTroughLocationId(temperaturePoint.locationId);
+      if (!locationId) return;
+      map.set(locationId, temperaturePoint);
+    });
+    return map;
+  }, [points]);
 
   useFrame(({ camera, size }) => {
     const model = modelRef.current;
@@ -502,7 +448,7 @@ function ModbusTemperatureSurfaceGrid({
         const projected = marker.getWorldPosition(new THREE.Vector3()).project(camera);
         return {
           marker,
-          active: SURFACE_MONITOR_POINTS[index].locationName === activeMonitorPoint?.locationName,
+          active: SURFACE_MONITOR_POINTS[index].locationId === activeMonitorPoint?.locationId,
           eligible: normal.dot(cameraDirection) > 0.1 && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1.1 && Math.abs(projected.y) <= 1.1,
           x: (projected.x * 0.5 + 0.5) * size.width,
           y: (-projected.y * 0.5 + 0.5) * size.height,
@@ -523,10 +469,10 @@ function ModbusTemperatureSurfaceGrid({
   return (
     <group>
       {SURFACE_MONITOR_POINTS.map((monitorPoint, index) => {
-        const livePoint = pointByLocationName.get(monitorPoint.locationName);
-        const isAlarmPoint = Boolean(alarmLocationName) && monitorPoint.locationName === alarmLocationName;
-        const isLatestPoint = !alarmLocationName && Boolean(latestLocationName) && monitorPoint.locationName === latestLocationName;
-        const active = activeMonitorPoint?.locationName === monitorPoint.locationName;
+        const livePoint = pointByLocationId.get(monitorPoint.locationId);
+        const isAlarmPoint = Boolean(alarmLocationId) && monitorPoint.locationId === alarmLocationId;
+        const isLatestPoint = !alarmLocationId && Boolean(latestLocationId) && monitorPoint.locationId === latestLocationId;
+        const active = activeMonitorPoint?.locationId === monitorPoint.locationId;
         const realTimeTemperature = livePoint?.temperature;
         const markerColor = isAlarmPoint
           ? alarmColor
@@ -536,7 +482,7 @@ function ModbusTemperatureSurfaceGrid({
               ? '#64748b'
               : '#34d399';
         return (
-          <group key={monitorPoint.locationName} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
+          <group key={monitorPoint.locationId} ref={(node) => { markerRefs.current[index] = node; }} visible={false}>
             <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={active ? 14 : 10}>
               <circleGeometry args={[monitorPoint.radius * 1.7, 32]} />
               <meshBasicMaterial color={markerColor} transparent opacity={active ? 0.26 : 0.15} depthWrite={false} blending={THREE.AdditiveBlending} />

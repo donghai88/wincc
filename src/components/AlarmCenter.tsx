@@ -52,6 +52,7 @@ const LOCATION_CHART_COLORS = [
 
 interface AlarmFilters {
   locationName: string;
+  level: '' | AlarmPageLevel;
   isRead: AlarmReadFilter;
   pageSize: number;
 }
@@ -61,6 +62,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const defaultFilters: AlarmFilters = {
   locationName: '',
+  level: '',
   isRead: 'all',
   pageSize: PAGE_SIZE,
 };
@@ -131,6 +133,7 @@ function buildQuery(
     pageNum,
     pageSize: filters.pageSize,
     locationName: filters.locationName || undefined,
+    level: filters.level || undefined,
     isRead: filters.isRead === 'all' ? undefined : (Number(filters.isRead) as AlarmReadState),
     startTime: timeRange.startTime,
     endTime: timeRange.endTime,
@@ -141,14 +144,102 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
 
+const readString = (record: Record<string, unknown>, key: string) => {
+  const value = record[key];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const readNullableString = (record: Record<string, unknown>, key: string) => {
+  const value = record[key];
+  return typeof value === 'string' ? value.trim() : null;
+};
+
+const readNumber = (record: Record<string, unknown>, key: string) => {
+  const value = record[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
+};
+
+const coerceFiniteNumber = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
+};
+
+const readLevel = (record: Record<string, unknown>): AlarmPageLevel => {
+  const value = readString(record, 'level');
+  return value === '2' ? '2' : '1';
+};
+
+const readReadState = (record: Record<string, unknown>): AlarmReadState => {
+  const value = readNumber(record, 'isRead');
+  return value === 1 ? 1 : 0;
+};
+
+const formatAlarmTemp = (value: number | null | undefined, digits = 1) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  return value.toFixed(digits);
+};
+
+const normalizeAlarmPageRecord = (row: unknown): AlarmPageRecord | null => {
+  if (!isRecord(row)) return null;
+
+  const eventId = readString(row, 'eventId');
+  const alarmId = readString(row, 'alarmId') || eventId;
+  const eventTimeStamp = readString(row, 'eventTimeStamp');
+  const devId = readString(row, 'devId');
+  const channelName = readString(row, 'channelName');
+  const ruleType = readString(row, 'ruleType');
+  const locationName = readString(row, 'locationName');
+
+  if (!eventId || !eventTimeStamp) return null;
+
+  return {
+    id: readNumber(row, 'id'),
+    eventId,
+    alarmId,
+    eventTimeStamp,
+    devId,
+    channelName,
+    num: readNumber(row, 'num'),
+    ruleType,
+    level: readLevel(row),
+    avgTemp: readNumber(row, 'avgTemp'),
+    minTemp: readNumber(row, 'minTemp'),
+    maxTemp: readNumber(row, 'maxTemp'),
+    thresholdTemp: readNumber(row, 'thresholdTemp'),
+    locationName,
+    isRead: readReadState(row),
+    processor: readNullableString(row, 'processor'),
+    processContent: readNullableString(row, 'processContent'),
+    processTime: readNullableString(row, 'processTime'),
+  };
+};
+
 const pickAlarmPageData = (payload: unknown): AlarmPageData => {
   const data = unwrapApiData(payload);
 
-  if (!isRecord(data) || typeof data.total !== 'number' || !Array.isArray(data.list)) {
+  if (!isRecord(data) || !Array.isArray(data.list)) {
     throw new Error('告警分页接口返回结构不符合文档');
   }
 
-  return data as unknown as AlarmPageData;
+  const total = coerceFiniteNumber(data.total);
+  if (total === null) {
+    throw new Error('告警分页接口返回缺少 total');
+  }
+
+  return {
+    total,
+    list: data.list.flatMap((row) => {
+      const record = normalizeAlarmPageRecord(row);
+      return record ? [record] : [];
+    }),
+  };
 };
 
 const pickBatchProcessResult = (payload: unknown): boolean => {
@@ -169,46 +260,133 @@ const pickBatchProcessResult = (payload: unknown): boolean => {
   return true;
 };
 
+const pickFirstString = (row: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+};
+
+const pickFirstNumber = (row: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = coerceFiniteNumber(row[key]);
+    if (value !== null) return value;
+  }
+  return null;
+};
+
+const aggregateLocationStatsFromRecords = (records: AlarmPageRecord[]): AlarmLocationStat[] => {
+  const stats = new Map<string, AlarmLocationStat>();
+
+  records.forEach((record) => {
+    const locationName = record.locationName.trim();
+    if (!locationName) return;
+
+    const current = stats.get(locationName) ?? {
+      locationName,
+      alarmCount: 0,
+      unreadCount: 0,
+      maxTemp: null,
+      minTemp: null,
+    };
+
+    current.alarmCount += 1;
+    current.unreadCount += record.isRead === 0 ? 1 : 0;
+    if (record.maxTemp !== null) {
+      current.maxTemp = current.maxTemp === null
+        ? record.maxTemp
+        : Math.max(current.maxTemp, record.maxTemp);
+    }
+    if (record.minTemp !== null) {
+      current.minTemp = current.minTemp === null
+        ? record.minTemp
+        : Math.min(current.minTemp, record.minTemp);
+    }
+    stats.set(locationName, current);
+  });
+
+  return Array.from(stats.values()).sort((left, right) =>
+    left.locationName.localeCompare(right.locationName, 'zh-CN')
+  );
+};
+
 const pickLocationStats = (payload: unknown): AlarmLocationStat[] => {
-  const data = unwrapApiData(payload);
-  if (!Array.isArray(data) || !data.every(isRecord)) {
+  if (isRecord(payload) && typeof payload.code === 'number' && payload.code !== 200) {
+    throw new Error(
+      typeof payload.msg === 'string' && payload.msg.trim()
+        ? payload.msg
+        : `区域统计失败 code=${payload.code}`
+    );
+  }
+
+  const body = unwrapApiData(payload);
+
+  // Backend may return null/undefined when there is nothing to aggregate.
+  if (body == null) return [];
+
+  const rows = Array.isArray(body)
+    ? body
+    : isRecord(body) && Array.isArray(body.list)
+      ? body.list
+      : isRecord(body) && Array.isArray(body.records)
+        ? body.records
+        : isRecord(body) && Array.isArray(body.rows)
+          ? body.rows
+          : null;
+
+  if (!rows) {
     throw new Error('区域统计接口返回结构不符合文档：应为数组');
   }
 
-  return data.map((row, index) => {
-    const locationName = row.locationName;
-    const alarmCount = row.alarmCount;
-    const unreadCount = row.unreadCount;
-    const maxTemp = row.maxTemp;
-    const minTemp = row.minTemp;
+  if (rows.length === 0) return [];
 
-    if (typeof locationName !== 'string' || !locationName.trim()) {
-      throw new Error(`区域统计第 ${index + 1} 条缺少 locationName`);
-    }
-    if (typeof alarmCount !== 'number' || !Number.isFinite(alarmCount)) {
-      throw new Error(`区域统计 ${locationName} 缺少 alarmCount`);
-    }
-    if (typeof unreadCount !== 'number' || !Number.isFinite(unreadCount)) {
-      throw new Error(`区域统计 ${locationName} 缺少 unreadCount`);
-    }
-    if (typeof maxTemp !== 'number' || !Number.isFinite(maxTemp)) {
-      throw new Error(`区域统计 ${locationName} 缺少 maxTemp`);
-    }
-    if (typeof minTemp !== 'number' || !Number.isFinite(minTemp)) {
-      throw new Error(`区域统计 ${locationName} 缺少 minTemp`);
-    }
+  const parsed = rows.flatMap((row) => {
+    if (!isRecord(row)) return [];
 
-    return {
+    const locationName = pickFirstString(row, [
+      'locationName',
+      'location_name',
+      'location',
+      'regionName',
+      'region_name',
+      'name',
+    ]);
+    const alarmCount = pickFirstNumber(row, [
+      'alarmCount',
+      'alarm_count',
+      'count',
+      'total',
+      'totalCount',
+      'total_count',
+    ]);
+    // Some backends omit unread; treat missing as 0 instead of failing the whole chart.
+    const unreadCount = pickFirstNumber(row, [
+      'unreadCount',
+      'unread_count',
+      'unReadCount',
+      'unread',
+    ]) ?? 0;
+
+    if (!locationName || alarmCount === null) return [];
+
+    return [{
       locationName,
       alarmCount,
       unreadCount,
-      maxTemp,
-      minTemp,
-    };
+      maxTemp: pickFirstNumber(row, ['maxTemp', 'max_temp', 'maxTemperature', 'max_temperature']),
+      minTemp: pickFirstNumber(row, ['minTemp', 'min_temp', 'minTemperature', 'min_temperature']),
+    }];
   });
+
+  if (parsed.length === 0) {
+    throw new Error('区域统计接口有数据但字段无法识别（需要 locationName/alarmCount）');
+  }
+
+  return parsed;
 };
 
-const getRecordKey = (record: AlarmPageRecord) => `${record.id}:${record.eventId}`;
+const getRecordKey = (record: AlarmPageRecord) => `${record.eventId}:${record.id ?? 'na'}`;
 
 const getDefaultProcessor = (userName?: string | null, username?: string | null) => (
   userName?.trim() || username?.trim() || ''
@@ -283,7 +461,7 @@ function AlarmRecordCard({
           {record.ruleType}
         </strong>
         <p>
-          <span>温度:{record.maxTemp.toFixed(1)}°C</span>
+          <span>温度:{formatAlarmTemp(record.maxTemp)}°C</span>
           <span className="alarm-record-divider">|</span>
           <span>{record.eventTimeStamp}</span>
           <span className="alarm-record-divider">|</span>
@@ -370,18 +548,27 @@ export default function AlarmCenter() {
     ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'zh-CN'));
   }, [allRecords, knownLocations, locationStats]);
 
+  // Prefer dedicated stats API; if it fails or returns empty while the alarm list
+  // already has rows, aggregate client-side so the chart is still useful.
+  const displayLocationStats = useMemo(() => {
+    if (locationStats.length > 0) return locationStats;
+    return aggregateLocationStatsFromRecords(allRecords);
+  }, [allRecords, locationStats]);
+
+  const statsUsingListFallback = locationStats.length === 0 && displayLocationStats.length > 0;
+
   const locationStatSummary = useMemo(() => {
-    return locationStats.reduce(
+    return displayLocationStats.reduce(
       (summary, stat) => ({
         alarmCount: summary.alarmCount + stat.alarmCount,
         unreadCount: summary.unreadCount + stat.unreadCount,
       }),
       { alarmCount: 0, unreadCount: 0 },
     );
-  }, [locationStats]);
+  }, [displayLocationStats]);
 
   const locationChartOption = useMemo<EChartsOption>(() => {
-    const chartData = [...locationStats]
+    const chartData = [...displayLocationStats]
       .filter((stat) => stat.alarmCount > 0)
       .sort((left, right) => right.alarmCount - left.alarmCount)
       .map((stat, index) => ({
@@ -403,7 +590,7 @@ export default function AlarmCenter() {
           const item = Array.isArray(params) ? params[0] : params;
           if (!item || typeof item !== 'object') return '';
           const row = item as { name?: string; value?: number; percent?: number };
-          const unread = locationStats.find((stat) => stat.locationName === row.name)?.unreadCount ?? 0;
+          const unread = displayLocationStats.find((stat) => stat.locationName === row.name)?.unreadCount ?? 0;
           return `${row.name ?? ''}<br/>告警 ${row.value ?? 0} 条（${row.percent ?? 0}%）<br/>未读 ${unread} 条`;
         },
       },
@@ -433,7 +620,7 @@ export default function AlarmCenter() {
         },
       ],
     };
-  }, [locationStats]);
+  }, [displayLocationStats]);
 
   const selectedRecord = useMemo(() => {
     return allRecords.find((record) => getRecordKey(record) === selectedRecordId) ?? null;
@@ -556,7 +743,7 @@ export default function AlarmCenter() {
           ...stats.map((stat) => stat.locationName),
         ].filter(Boolean))));
         setStatsStatus('success');
-      } catch {
+      } catch (error) {
         if (controller.signal.aborted) return;
 
         if (canUseMockData) {
@@ -567,12 +754,17 @@ export default function AlarmCenter() {
             ...fallbackStats.map((stat) => stat.locationName),
           ].filter(Boolean))));
           setStatsStatus('fallback');
+          setStatsMessage('区域统计加载异常，已展示备用数据');
         } else {
           setLocationStats([]);
           setStatsStatus('error');
+          const detail = error instanceof Error && error.message.trim() ? error.message.trim() : '';
+          setStatsMessage(
+            detail
+              ? `区域统计加载失败：${detail}`
+              : '区域统计加载失败，请稍后重试'
+          );
         }
-
-        setStatsMessage(canUseMockData ? '区域统计加载异常，已展示备用数据' : '区域统计加载失败，请稍后重试');
       }
     }
 
@@ -583,6 +775,10 @@ export default function AlarmCenter() {
 
   const updateLocation = (locationName: string) => {
     setDraftFilters((current) => ({ ...current, locationName }));
+  };
+
+  const updateLevel = (level: '' | AlarmPageLevel) => {
+    setDraftFilters((current) => ({ ...current, level }));
   };
 
   const updateReadFilter = (isRead: AlarmReadFilter) => {
@@ -687,7 +883,7 @@ export default function AlarmCenter() {
 
     try {
       const response = await fetch(buildApiUrl(buildAlarmBatchProcessApiPath()), {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
@@ -1344,6 +1540,18 @@ export default function AlarmCenter() {
       <div className="alarm-control-panel">
         <div className="alarm-filter-row">
           <label className="alarm-field">
+            <span>报警等级</span>
+            <select
+              value={draftFilters.level}
+              onChange={(event) => updateLevel(event.target.value as '' | AlarmPageLevel)}
+            >
+              <option value="">全部等级</option>
+              <option value="1">1级</option>
+              <option value="2">2级</option>
+            </select>
+          </label>
+
+          <label className="alarm-field">
             <span>区域</span>
             <select
               value={draftFilters.locationName}
@@ -1402,11 +1610,16 @@ export default function AlarmCenter() {
             {apiStatus === 'fallback' ? '数据加载异常，已展示备用数据' : apiMessage}
           </div>
         )}
-        {statsMessage && (
+        {statsMessage && !(statsStatus === 'error' && statsUsingListFallback) && (
           <div className="alarm-api-message" role="status">
             {statsStatus === 'fallback'
               ? '区域统计加载异常，已展示备用数据'
               : statsMessage}
+          </div>
+        )}
+        {statsStatus === 'error' && statsUsingListFallback && (
+          <div className="alarm-api-message" role="status">
+            区域统计接口异常，已按当前告警列表汇总展示
           </div>
         )}
       </div>
@@ -1426,7 +1639,7 @@ export default function AlarmCenter() {
           </div>
         </div>
 
-        {locationStats.length === 0 ? (
+        {displayLocationStats.length === 0 ? (
           <div className="alarm-stats-empty">
             {statsStatus === 'loading' ? '正在加载区域统计…' : '暂无区域统计数据'}
           </div>
@@ -1445,15 +1658,15 @@ export default function AlarmCenter() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...locationStats]
+                  {[...displayLocationStats]
                     .sort((left, right) => right.alarmCount - left.alarmCount)
                     .map((stat) => (
                       <tr key={stat.locationName}>
                         <td>{stat.locationName}</td>
                         <td>{stat.alarmCount}</td>
                         <td>{stat.unreadCount}</td>
-                        <td>{stat.maxTemp.toFixed(1)}℃</td>
-                        <td>{stat.minTemp.toFixed(1)}℃</td>
+                        <td>{formatAlarmTemp(stat.maxTemp)}℃</td>
+                        <td>{formatAlarmTemp(stat.minTemp)}℃</td>
                       </tr>
                     ))}
                 </tbody>
@@ -1558,8 +1771,8 @@ export default function AlarmCenter() {
               <div><span>区域 / 通道</span><strong>{selectedRecord.locationName} / {selectedRecord.channelName}</strong></div>
               <div><span>报警事项 / 等级</span><strong>{selectedRecord.ruleType} / {selectedRecord.level}级</strong></div>
               <div><span>报警时间</span><strong>{selectedRecord.eventTimeStamp}</strong></div>
-              <div><span>温度（均/低/高）</span><strong>{selectedRecord.avgTemp.toFixed(1)} / {selectedRecord.minTemp.toFixed(1)} / {selectedRecord.maxTemp.toFixed(1)} ℃</strong></div>
-              <div><span>阈值 / 次数</span><strong>{selectedRecord.thresholdTemp.toFixed(1)} ℃ / {selectedRecord.num}</strong></div>
+              <div><span>温度（均/低/高）</span><strong>{formatAlarmTemp(selectedRecord.avgTemp)} / {formatAlarmTemp(selectedRecord.minTemp)} / {formatAlarmTemp(selectedRecord.maxTemp)} ℃</strong></div>
+              <div><span>阈值 / 次数</span><strong>{formatAlarmTemp(selectedRecord.thresholdTemp)} ℃ / {selectedRecord.num ?? '-'}</strong></div>
               <div><span>处理人</span><strong>{selectedRecord.processor ?? '-'}</strong></div>
               <div><span>处理时间</span><strong>{selectedRecord.processTime ?? '-'}</strong></div>
               <div><span>处理内容</span><strong>{selectedRecord.processContent ?? '-'}</strong></div>

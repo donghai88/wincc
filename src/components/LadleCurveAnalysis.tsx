@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import dayjs from 'dayjs';
 import {
@@ -15,6 +15,7 @@ import {
   isMockOnly,
   unwrapApiData,
 } from '@/lib/api-config';
+import { fetchLadleNoOptions } from '@/lib/ladle-options';
 import type { LadleChartPoint } from '@/types/ladle-api';
 import styles from './LadleCurveAnalysis.module.css';
 
@@ -35,7 +36,14 @@ export default function LadleCurveAnalysis() {
   const [points, setPoints] = useState<LadleChartPoint[]>([]);
   const [status, setStatus] = useState<QueryStatus>('idle');
   const [message, setMessage] = useState('');
-  const ladleOptions = useMemo(() => getMockLadleNos(), []);
+  const [ladleOptions, setLadleOptions] = useState<string[]>(() => getMockLadleNos());
+
+  useEffect(() => {
+    void fetchLadleNoOptions().then((nos) => {
+      setLadleOptions(nos);
+      if (nos.length > 0 && !nos.includes(ladleNo)) setLadleNo(nos[0]);
+    });
+  }, []);
 
   const loadData = async () => {
     setMessage('');
@@ -61,7 +69,7 @@ export default function LadleCurveAnalysis() {
       if (canUseMockData) {
         setPoints(queryLadleChartList(query).data);
         setStatus('fallback');
-        setMessage('接口异常，已展示演示数据');
+        setMessage('接口异常，已展示备用数据');
       } else {
         setPoints([]);
         setStatus('error');
@@ -112,7 +120,7 @@ export default function LadleCurveAnalysis() {
         <div><span>当前最高温</span><b>{latest.toFixed(0)}<small>°C</small></b><em>{status === 'loading' ? '加载中' : `${points.length} 个采样点`}</em></div>
         <div><span>峰值温度</span><b>{Math.max(...maxSeries, 0).toFixed(0)}<small>°C</small></b><em>本周期最高</em></div>
         <div><span>平均温度</span><b>{(avgSeries.reduce((sum, value) => sum + value, 0) / Math.max(avgSeries.length, 1)).toFixed(1)}<small>°C</small></b><em>聚合结果</em></div>
-        <div><span>关联钢包</span><b>{ladleNo}</b><em>API 文档样例字段</em></div>
+        <div><span>关联钢包</span><b>{ladleNo}</b><em>当前查询钢包</em></div>
       </div>
 
       <section className={styles.chartPanel}>

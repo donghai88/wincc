@@ -25,6 +25,7 @@ import {
   Table,
   theme,
 } from 'antd';
+import { TROUGH_MONITOR_POINTS, getTroughMonitorPoint } from '@/data/trough-monitor-points';
 import {
   buildApiUrl,
   canUseMockData,
@@ -90,41 +91,73 @@ const formatApiDateTime = (date: Date) => {
 
 const DOCUMENTED_TREND_QUERY = {
   locationId: 'loc_2',
-  locationName: '位置2',
+  locationName: getTroughMonitorPoint('loc_2')?.locationName ?? 'loc_2',
   startTime: new Date('2026-07-01T10:00:00'),
   endTime: new Date('2026-07-01T10:10:59'),
   periodMinutes: 2,
+};
+
+/** Mock 下拉与 16 个监控点一致。样例曲线仍只有 loc_2 那一段。 */
+const FALLBACK_REPORT_LOCATIONS: ReportLocation[] = TROUGH_MONITOR_POINTS.map((point) => ({
+  id: point.locationId,
+  name: point.locationName,
+}));
+
+const formatDateOnly = (date: Date) => {
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-');
+};
+
+const getWeekMonday = (date: Date) => {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  const mondayOffset = (nextDate.getDay() + 6) % 7;
+  nextDate.setDate(nextDate.getDate() - mondayOffset);
+  return nextDate;
+};
+
+const getLastCompletedWeekMonday = () => {
+  const monday = getWeekMonday(new Date());
+  monday.setDate(monday.getDate() - 7);
+  return monday;
+};
+
+const buildWeeklyReportQueryUrl = (weekMonday: string) => {
+  return buildApiUrl('/weekly/report/query', { weekMonday });
 };
 
 const DOCUMENTED_TREND_ROWS = [
   {
     statTime: '2026-07-01 10:00:00',
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: DOCUMENTED_TREND_QUERY.locationName,
     avgTemperature: 18.525000,
   },
   {
     statTime: '2026-07-01 10:02:00',
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: DOCUMENTED_TREND_QUERY.locationName,
     avgTemperature: 18.525000,
   },
   {
     statTime: '2026-07-01 10:04:00',
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: DOCUMENTED_TREND_QUERY.locationName,
     avgTemperature: 18.375000,
   },
   {
     statTime: '2026-07-01 10:06:00',
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: DOCUMENTED_TREND_QUERY.locationName,
     avgTemperature: 18.275000,
   },
   {
     statTime: '2026-07-01 10:08:00',
     locationId: 'loc_2',
-    locationName: '位置2',
+    locationName: DOCUMENTED_TREND_QUERY.locationName,
     avgTemperature: 18.175000,
   },
 ];
@@ -239,6 +272,28 @@ const mergeReportLocations = (...groups: ReportLocation[][]): ReportLocation[] =
   });
 
   return Array.from(locations.values());
+};
+
+const sortReportLocations = (locations: ReportLocation[]) => {
+  return [...locations].sort((left, right) =>
+    left.id.localeCompare(right.id, undefined, { numeric: true })
+  );
+};
+
+const pickLocationsFromWeeklyPayload = (payload: unknown): ReportLocation[] => {
+  const rows = unwrapApiData(payload);
+  if (!Array.isArray(rows) || !rows.every(isRecord)) {
+    throw new Error('周报接口返回结构不符合预期：应为数组');
+  }
+
+  const locations = rows.flatMap((row) => {
+    const locationId = typeof row.locationId === 'string' ? row.locationId.trim() : '';
+    const locationName = typeof row.locationName === 'string' ? row.locationName.trim() : '';
+    if (!locationId || !locationName) return [];
+    return [{ id: locationId, name: locationName }];
+  });
+
+  return sortReportLocations(mergeReportLocations(locations));
 };
 
 const getReportLocations = (rows: TemperatureTrendPoint[]): ReportLocation[] => {
@@ -371,6 +426,7 @@ export default function TemperatureTrendReport() {
   const [queryVersion, setQueryVersion] = useState(0);
   const [data, setData] = useState<TemperatureTrendPoint[]>([]);
   const [reportLocations, setReportLocations] = useState<ReportLocation[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(!isMockOnly);
   const [queryStatus, setQueryStatus] = useState<QueryStatus>('idle');
   const [queryMessage, setQueryMessage] = useState('');
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -407,7 +463,7 @@ export default function TemperatureTrendReport() {
     : queryStatus === 'success'
       ? '已加载'
       : queryStatus === 'mock'
-        ? '演示数据'
+        ? '已加载'
         : queryStatus === 'fallback'
           ? '备用数据'
           : queryStatus === 'error'
@@ -551,6 +607,66 @@ export default function TemperatureTrendReport() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const weekMonday = formatDateOnly(getLastCompletedWeekMonday());
+
+    const applyLocations = (locations: ReportLocation[]) => {
+      if (locations.length === 0) return;
+
+      setReportLocations((current) => sortReportLocations(mergeReportLocations(locations, current)));
+
+      setDraftFilters((current) => {
+        const match = locations.find((location) => location.id === current.locationId);
+        if (!match || match.name === current.locationName) return current;
+        return { ...current, locationName: match.name };
+      });
+    };
+
+    async function loadReportLocations() {
+      if (isMockOnly) {
+        applyLocations(FALLBACK_REPORT_LOCATIONS);
+        setLocationsLoading(false);
+        return;
+      }
+
+      setLocationsLoading(true);
+
+      try {
+        const response = await fetch(buildWeeklyReportQueryUrl(weekMonday), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json() as unknown;
+        const locations = pickLocationsFromWeeklyPayload(payload);
+        if (locations.length > 0) {
+          applyLocations(locations);
+        } else if (canUseMockData) {
+          applyLocations(FALLBACK_REPORT_LOCATIONS);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (canUseMockData) {
+          applyLocations(FALLBACK_REPORT_LOCATIONS);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLocationsLoading(false);
+        }
+      }
+    }
+
+    loadReportLocations();
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
 
     async function loadTrendData() {
       if (isActiveRangeInvalid) {
@@ -563,7 +679,9 @@ export default function TemperatureTrendReport() {
       if (isMockOnly) {
         const rows = queryDocumentTrendData(activeFilters);
         setData(rows);
-        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
+        setReportLocations((current) =>
+          sortReportLocations(mergeReportLocations(current, getReportLocations(rows)))
+        );
         setQueryStatus('mock');
         setQueryMessage('');
         return;
@@ -586,14 +704,18 @@ export default function TemperatureTrendReport() {
         const payload = await response.json() as unknown;
         const rows = normalizeTrendRows(pickTrendRows(payload));
         setData(rows);
-        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
+        setReportLocations((current) =>
+          sortReportLocations(mergeReportLocations(current, getReportLocations(rows)))
+        );
         setQueryStatus('success');
       } catch (error) {
         if (controller.signal.aborted) return;
 
         const rows = canUseMockData ? queryDocumentTrendData(activeFilters) : [];
         setData(rows);
-        setReportLocations((current) => mergeReportLocations(current, getReportLocations(rows)));
+        setReportLocations((current) =>
+          sortReportLocations(mergeReportLocations(current, getReportLocations(rows)))
+        );
         setQueryStatus(canUseMockData ? 'fallback' : 'error');
         setQueryMessage(canUseMockData ? '数据加载异常，已展示备用数据' : '加载失败，请稍后重试');
       }
@@ -712,6 +834,9 @@ export default function TemperatureTrendReport() {
                       label: location.name,
                     }))}
                     onChange={updateLocation}
+                    loading={locationsLoading}
+                    showSearch
+                    optionFilterProp="label"
                     aria-label="选择位置"
                   />
                 </Form.Item>

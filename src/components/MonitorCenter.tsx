@@ -492,7 +492,7 @@ export default function MonitorCenter() {
         ? '备用数据'
         : thermalCameraStatus === 'error'
           ? '加载失败'
-          : '演示数据';
+          : '已加载';
 
   return (
     <>

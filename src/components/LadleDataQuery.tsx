@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Eye, RefreshCw, Search } from 'lucide-react';
 import {
   buildLadleRecordDownloadPath,
@@ -16,19 +16,26 @@ import {
   buildApiUrl,
   canUseMockData,
   isMockOnly,
+  resolveSnapshotUrl,
   unwrapApiData,
 } from '@/lib/api-config';
+import { fetchLadleNoOptions } from '@/lib/ladle-options';
 import type { LadleRecordDetail, LadleRecordListQuery, LadleRecordRow } from '@/types/ladle-api';
 import styles from './LadleManagement.module.css';
 
 type QueryStatus = 'idle' | 'loading' | 'success' | 'mock' | 'fallback' | 'error';
+
+const formatTempCell = (value: number | null | undefined, digits = 2) => (
+  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—'
+);
 
 const defaultQuery = (): LadleRecordListQuery => {
   const end = new Date();
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
   return {
     ladleNo: 'Y-111',
-    deviceNameList: ladleDeviceNameOptions.join(','),
+    /** 全部设备时不传 deviceNameList，避免硬编码设备名与真实/演示数据不一致导致 0 条 */
+    deviceNameList: undefined,
     startTime: formatLadleDateTime(start),
     endTime: formatLadleDateTime(end),
     pageNum: 1,
@@ -46,7 +53,12 @@ export default function LadleDataQuery() {
   const [detailRows, setDetailRows] = useState<LadleRecordDetail[]>([]);
   const [detailTitle, setDetailTitle] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
-  const ladleOptions = useMemo(() => getMockLadleNos(), []);
+  const [ladleOptions, setLadleOptions] = useState<string[]>(() => getMockLadleNos());
+
+  const loadLadleOptions = async () => {
+    const next = await fetchLadleNoOptions();
+    setLadleOptions(next);
+  };
 
   const loadData = async (query: LadleRecordListQuery) => {
     setMessage('');
@@ -76,7 +88,7 @@ export default function LadleDataQuery() {
         setRows(result.rows);
         setTotal(result.total);
         setStatus('fallback');
-        setMessage('接口异常，已展示演示数据');
+        setMessage('接口异常，已展示备用数据');
       } else {
         setRows([]);
         setTotal(0);
@@ -87,16 +99,36 @@ export default function LadleDataQuery() {
   };
 
   useEffect(() => {
+    void loadLadleOptions();
+  }, []);
+
+  useEffect(() => {
     void loadData(applied);
   }, [applied]);
 
+  useEffect(() => {
+    if (!ladleOptions.length) return;
+    if (!draft.ladleNo || !ladleOptions.includes(draft.ladleNo)) {
+      const nextLadleNo = ladleOptions[0];
+      setDraft((current) => ({ ...current, ladleNo: nextLadleNo }));
+      setApplied((current) => (
+        current.ladleNo === nextLadleNo ? current : { ...current, ladleNo: nextLadleNo, pageNum: 1 }
+      ));
+    }
+  }, [ladleOptions]);
+
   const submitQuery = () => {
-    setApplied({ ...draft, pageNum: 1 });
+    setApplied({
+      ...draft,
+      deviceNameList: draft.deviceNameList?.trim() || undefined,
+      pageNum: 1,
+    });
   };
 
   const openDetail = async (row: LadleRecordRow) => {
     setDetailTitle(`${row.ladleNo} · ${row.recordTime}`);
-    if (isMockOnly || canUseMockData) {
+
+    if (isMockOnly) {
       const result = queryLadleRecordDetail(row.ladleNo, row.recordTime);
       setDetailRows(result.data);
       setDetailOpen(true);
@@ -113,9 +145,16 @@ export default function LadleDataQuery() {
       setDetailRows(Array.isArray(data) ? data : []);
       setDetailOpen(true);
     } catch {
-      const result = queryLadleRecordDetail(row.ladleNo, row.recordTime);
-      setDetailRows(result.data);
-      setDetailOpen(true);
+      if (canUseMockData) {
+        const result = queryLadleRecordDetail(row.ladleNo, row.recordTime);
+        setDetailRows(result.data);
+        setDetailOpen(true);
+        setMessage('原图接口异常，已展示备用数据');
+      } else {
+        setDetailRows([]);
+        setDetailOpen(true);
+        setMessage('原图加载失败，请稍后重试');
+      }
     }
   };
 
@@ -157,7 +196,7 @@ export default function LadleDataQuery() {
 
       <section className={styles.registry}>
         <div className={styles.registryHeader}>
-          <div><h3>查询条件</h3><p>返回值按钢包号 + 记录时间聚合 3 路热成像数据</p></div>
+          <div><h3>查询条件</h3><p>返回值按钢包号 + 记录时间聚合多路热成像数据</p></div>
           <span>{status === 'loading' ? '查询中…' : `共 ${total} 条`}</span>
         </div>
         <div className={styles.filters}>
@@ -174,9 +213,12 @@ export default function LadleDataQuery() {
             设备
             <select
               value={draft.deviceNameList ?? ''}
-              onChange={(event) => setDraft((current) => ({ ...current, deviceNameList: event.target.value }))}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                deviceNameList: event.target.value || undefined,
+              }))}
             >
-              <option value={ladleDeviceNameOptions.join(',')}>全部设备</option>
+              <option value="">全部设备</option>
               {ladleDeviceNameOptions.map((device) => (
                 <option key={device} value={device}>{device}</option>
               ))}
@@ -219,9 +261,9 @@ export default function LadleDataQuery() {
                 <tr key={`${row.ladleNo}-${row.recordTime}`}>
                   <td><b>{row.ladleNo}</b></td>
                   <td>{row.deviceName}</td>
-                  <td>{row.maxTemp.toFixed(2)}</td>
-                  <td>{row.minTemp.toFixed(2)}</td>
-                  <td>{row.avgTemp.toFixed(2)}</td>
+                  <td>{formatTempCell(row.maxTemp)}</td>
+                  <td>{formatTempCell(row.minTemp)}</td>
+                  <td>{formatTempCell(row.avgTemp)}</td>
                   <td>{row.recordTime}</td>
                   <td>
                     <button type="button" onClick={() => void openDetail(row)}>
@@ -275,20 +317,35 @@ export default function LadleDataQuery() {
                   <th>最低温</th>
                   <th>平均温</th>
                   <th>记录时间</th>
+                  <th>截图</th>
                 </tr>
               </thead>
               <tbody>
-                {detailRows.map((row) => (
-                  <tr key={row.id}>
-                    <td><b>{row.deviceName}</b></td>
-                    <td>{row.maxTemp.toFixed(2)}</td>
-                    <td>{row.minTemp.toFixed(2)}</td>
-                    <td>{row.avgTemp.toFixed(2)}</td>
-                    <td>{row.recordTime}</td>
-                  </tr>
-                ))}
+                {detailRows.map((row, index) => {
+                  const snapshotUrl = row.snapshotPath ? resolveSnapshotUrl(row.snapshotPath) : '';
+                  return (
+                    <tr key={row.id ?? `${row.deviceName}-${row.recordTime}-${index}`}>
+                      <td><b>{row.deviceName}</b></td>
+                      <td>{formatTempCell(row.maxTemp)}</td>
+                      <td>{formatTempCell(row.minTemp)}</td>
+                      <td>{formatTempCell(row.avgTemp)}</td>
+                      <td>{row.recordTime}</td>
+                      <td>
+                        {snapshotUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- dynamic snapshot URLs
+                          <img
+                            src={snapshotUrl}
+                            alt={`${row.deviceName} 截图`}
+                            style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 4, display: 'block' }}
+                          />
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            {detailRows.length === 0 && <p className={styles.empty}>暂无原始热成像明细。</p>}
           </div>
         </section>
       )}

@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
 } from 'lucide-react';
 import { ladleNavItems, type LadleNavId } from '@/lib/ladle-navigation';
+import { isBenxiLadleProductMode, ladleShellTitle, productVendorName } from '@/lib/product-mode';
 
 export type LadleSidebarNavId = LadleNavId | 'dashboard';
 
@@ -77,11 +78,13 @@ export default function LadleSidebar({
           {!collapsed && (
             <div>
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                钢包监测系统
+                {ladleShellTitle}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                西安豪克电子有限公司
-              </div>
+              {!isBenxiLadleProductMode && (
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                  {productVendorName}
+                </div>
+              )}
             </div>
           )}
         </div>

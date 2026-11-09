@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import {
   buildLadleAlarmPagePath,
@@ -15,6 +15,7 @@ import {
   isMockOnly,
   unwrapApiData,
 } from '@/lib/api-config';
+import { fetchLadleNoOptions } from '@/lib/ladle-options';
 import type { LadleAlarmPageQuery, LadleAlarmRecord } from '@/types/ladle-api';
 import styles from './LadleManagement.module.css';
 
@@ -41,6 +42,7 @@ export default function LadleAlarmCenter() {
     ...getRecentSevenDayRange(),
   });
   const [applied, setApplied] = useState(draft);
+  const [pageNum, setPageNum] = useState(1);
   const [records, setRecords] = useState<LadleAlarmRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<ApiStatus>('idle');
@@ -48,7 +50,17 @@ export default function LadleAlarmCenter() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [processor, setProcessor] = useState('张三');
   const [processContent, setProcessContent] = useState('已现场排查，恢复正常');
-  const ladleOptions = useMemo(() => getMockLadleNos(), []);
+  const [ladleOptions, setLadleOptions] = useState<string[]>(() => getMockLadleNos());
+
+  useEffect(() => {
+    void fetchLadleNoOptions().then(setLadleOptions);
+  }, []);
+
+  const buildQuery = (filters: LadleAlarmPageQuery, nextPageNum: number): LadleAlarmPageQuery => ({
+    ...filters,
+    pageNum: nextPageNum,
+    pageSize: filters.pageSize || 10,
+  });
 
   const loadData = async (query: LadleAlarmPageQuery) => {
     setMessage('');
@@ -78,7 +90,7 @@ export default function LadleAlarmCenter() {
         setRecords(result.data.list);
         setTotal(result.data.total);
         setStatus('fallback');
-        setMessage('接口异常，已展示演示数据');
+        setMessage('接口异常，已展示备用数据');
       } else {
         setRecords([]);
         setTotal(0);
@@ -89,10 +101,14 @@ export default function LadleAlarmCenter() {
   };
 
   useEffect(() => {
-    void loadData(applied);
-  }, [applied]);
+    void loadData(buildQuery(applied, pageNum));
+  }, [
+    applied,
+    pageNum,
+  ]);
 
   const submitQuery = () => {
+    setPageNum(1);
     setApplied({ ...draft, pageNum: 1 });
   };
 
@@ -115,31 +131,39 @@ export default function LadleAlarmCenter() {
     if (isMockOnly || canUseMockData) {
       processLadleAlarmBatch(request);
       setSelectedIds([]);
-      await loadData(applied);
+      await loadData(buildQuery(applied, pageNum));
       setMessage(`已处理 ${request.eventIds.length} 条报警`);
       return;
     }
 
     try {
       const response = await fetch(buildApiUrl('/alarm/batch-process'), {
-        method: 'POST',
+        method: 'PUT',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       setSelectedIds([]);
-      await loadData(applied);
+      await loadData(buildQuery(applied, pageNum));
       setMessage(`已处理 ${request.eventIds.length} 条报警`);
     } catch {
       processLadleAlarmBatch(request);
       setSelectedIds([]);
-      await loadData(applied);
-      setMessage('接口异常，已在本地演示环境中标记为已处理');
+      await loadData(buildQuery(applied, pageNum));
+      setMessage('接口异常，已在本地标记为已处理');
     }
   };
 
   const unreadCount = records.filter((record) => record.isRead === 0).length;
-  const totalPages = Math.max(1, Math.ceil(total / applied.pageSize));
+  const pageSize = applied.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(pageNum, totalPages);
+
+  const goToPage = (nextPage: number) => {
+    const safePage = Math.min(totalPages, Math.max(1, nextPage));
+    if (safePage === pageNum) return;
+    setPageNum(safePage);
+  };
 
   return (
     <section className={styles.shell} aria-label="钢包报警管理">
@@ -157,7 +181,7 @@ export default function LadleAlarmCenter() {
         <div><span>查询结果</span><b>{total}</b><em>{status === 'loading' ? '加载中' : '当前筛选总数'}</em></div>
         <div><span>本页未读</span><b className={styles.warning}>{unreadCount}</b><em>待处理记录</em></div>
         <div><span>已选</span><b>{selectedIds.length}</b><em>批量处理</em></div>
-        <div><span>数据源</span><b>{status === 'mock' || status === 'fallback' ? 'Mock' : 'API'}</b><em>ladleNo 维度</em></div>
+        <div><span>数据源</span><b>{status === 'fallback' ? '备用' : 'API'}</b><em>ladleNo 维度</em></div>
       </div>
 
       <section className={styles.registry}>
@@ -253,21 +277,21 @@ export default function LadleAlarmCenter() {
         </div>
 
         <div className={styles.filters} style={{ justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>第 {applied.pageNum} / {totalPages} 页</span>
+          <span style={{ color: 'var(--muted)', fontSize: 11 }}>第 {currentPage} / {totalPages} 页</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={applied.pageNum <= 1}
-              onClick={() => setApplied((current) => ({ ...current, pageNum: Math.max(1, current.pageNum - 1) }))}
+              disabled={currentPage <= 1 || status === 'loading'}
+              onClick={() => goToPage(currentPage - 1)}
             >
               上一页
             </button>
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={applied.pageNum >= totalPages}
-              onClick={() => setApplied((current) => ({ ...current, pageNum: Math.min(totalPages, current.pageNum + 1) }))}
+              disabled={currentPage >= totalPages || status === 'loading'}
+              onClick={() => goToPage(currentPage + 1)}
             >
               下一页
             </button>

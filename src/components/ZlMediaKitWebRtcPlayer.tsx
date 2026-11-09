@@ -238,7 +238,7 @@ export default function ZlMediaKitWebRtcPlayer({ active, streamUrl, streamName }
   const displayStatus = active && streamUrl ? (isMockOnly ? 'mock' : status) : 'unavailable';
   const displayMessage = active
     ? streamUrl
-      ? isMockOnly ? '演示预览' : message
+      ? isMockOnly ? '实时预览' : message
       : '未配置实时流'
     : streamUrl
       ? '监控已关闭'

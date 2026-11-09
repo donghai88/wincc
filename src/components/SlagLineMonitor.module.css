@@ -79,6 +79,8 @@
 .viewButtons button:hover, .viewButtons button.active { border-color: rgba(34, 211, 238, .52); background: rgba(34, 211, 238, .1); color: #a5f3fc; }
 .canvasWrap { position: relative; margin-top: 11px; overflow: hidden; border: 1px solid rgba(34, 211, 238, .17); border-radius: 5px; background: #030910; }
 .canvasWrap canvas { display: block; width: 100%; height: auto; max-height: 480px; }
+.canvasWrapLive { height: 480px; }
+.canvasWrapLive canvas { max-height: none; height: 100%; }
 .canvasFooter { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: rgba(202, 219, 237, .55); font: 10px var(--font-mono); }
 .canvasFooter i { margin-left: 7px; font-style: normal; }
 .chartWrap { margin-top: 10px; }.chartWrap svg { display: block; width: 100%; height: 145px; overflow: visible; }.chartAxis { display: flex; justify-content: space-between; margin: -4px 2px 0; color: rgba(202, 219, 237, .48); font: 10px var(--font-mono); }

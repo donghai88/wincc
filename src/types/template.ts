@@ -130,19 +130,20 @@ export interface ApiSuccessResponse<T> {
 }
 
 export interface AlarmPageRecord {
-  id: number;
+  id: number | null;
   eventId: string;
   alarmId: string;
   eventTimeStamp: string;
   devId: string;
   channelName: string;
-  num: number;
+  num: number | null;
   ruleType: string;
   level: AlarmPageLevel;
-  avgTemp: number;
-  minTemp: number;
-  maxTemp: number;
-  thresholdTemp: number;
+  /** Real APIs may omit these for some rule types (e.g. 温升). */
+  avgTemp: number | null;
+  minTemp: number | null;
+  maxTemp: number | null;
+  thresholdTemp: number | null;
   locationName: string;
   isRead: AlarmReadState;
   processor: string | null;
@@ -175,8 +176,8 @@ export interface AlarmLocationStat {
   locationName: string;
   alarmCount: number;
   unreadCount: number;
-  maxTemp: number;
-  minTemp: number;
+  maxTemp: number | null;
+  minTemp: number | null;
 }
 
 export interface AlarmLocationStatQuery {

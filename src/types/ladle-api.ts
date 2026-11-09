@@ -28,11 +28,12 @@ export interface LadleRecordRow {
   id: number | null;
   ladleNo: string;
   deviceName: string;
-  maxTemp: number;
-  minTemp: number;
-  avgTemp: number;
+  maxTemp: number | null;
+  minTemp: number | null;
+  avgTemp: number | null;
   recordTime: string;
   createTime: string | null;
+  snapshotPath?: string | null;
 }
 
 export interface LadleRecordDetail extends Omit<LadleRecordRow, 'id'> {
@@ -74,13 +75,21 @@ export type LadleStatusCode = '1' | '2' | '3' | '4';
 export interface LadleEntity {
   id: number;
   ladleNo: string;
-  productionDate: string;
-  plannedLifespan: number;
-  estimatedRemainingLife: number;
-  latestTemperature: string;
+  /** 进包时间 */
+  inLadleTime: string;
+  /** 出包时间 */
+  outLadleTime: string;
+  /** 进包重量（小数 1 位）；列表/详情可能是 number */
+  inLadleWeight: number;
+  /** 出包重量（小数 1 位）；列表/详情可能是 number */
+  outLadleWeight: number;
+  /** 出包温度（整数）；列表/详情可能是 number */
+  outLadleTemperature: number;
   lastMaintenanceTime: string;
   totalUsageCount: number;
   currentStatus: LadleStatusCode;
+  /** 后端监测用 sequence，前端不展示 */
+  postMaintenanceUsageCount?: number;
   createBy?: string;
   createTime?: string;
   updateBy?: string;
@@ -88,15 +97,30 @@ export interface LadleEntity {
   remark?: string | null;
 }
 
+/**
+ * POST /ladle、PUT /ladle 请求体（对齐文档示例）：
+ * 重量、出包温度为 string；不含 postMaintenanceUsageCount。
+ */
+export interface LadleWritePayload {
+  ladleNo: string;
+  inLadleTime: string;
+  outLadleTime: string;
+  inLadleWeight: string;
+  outLadleWeight: string;
+  outLadleTemperature: string;
+  lastMaintenanceTime: string;
+  totalUsageCount: number;
+  currentStatus: LadleStatusCode;
+  id?: number;
+}
+
 export interface LadleListQuery {
   ladleNo?: string;
-  productionDate?: string;
-  plannedLifespan?: number;
-  estimatedRemainingLife?: number;
-  latestTemperature?: string;
+  currentStatus?: LadleStatusCode;
   lastMaintenanceTime?: string;
   totalUsageCount?: number;
-  currentStatus?: LadleStatusCode;
+  inLadleTime?: string;
+  outLadleTime?: string;
   pageNum?: number;
   pageSize?: number;
 }

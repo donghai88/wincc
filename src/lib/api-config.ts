@@ -27,6 +27,8 @@ export const isMockOnly = apiMockMode === 'mock';
 
 export const getApiBase = () => (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/+$/, '');
 export const getWsBase = () => (process.env.NEXT_PUBLIC_WS_BASE_URL ?? '').replace(/\/+$/, '');
+/** 测温截图静态资源根，例如 http://192.168.1.109:85（对接 /snapshots/... 相对路径） */
+export const getSnapshotBase = () => (process.env.NEXT_PUBLIC_SNAPSHOT_BASE_URL ?? '').replace(/\/+$/, '');
 
 export const buildApiUrl = (path: string, params?: Record<string, string | number | boolean | undefined>) => {
   const apiBase = getApiBase();
@@ -81,8 +83,10 @@ export const buildFlvProxyWsUrl = (upstreamFlvUrl: string) => {
 
 /**
  * Resolve ladle snapshotPath for <img src>.
- * - http(s) / protocol-relative / web paths: use directly (via API base when relative)
- * - Windows absolute file paths (D:\...): same-origin Node proxy in serve-static.mjs
+ * - http(s) / protocol-relative: use directly
+ * - Windows absolute / UNC: same-origin Node proxy `/api/media/snapshot`
+ * - Web paths like `/snapshots/...`: join NEXT_PUBLIC_SNAPSHOT_BASE_URL when set
+ *   (不要拼到 /api 上，静态图通常由独立静态服务或 Nginx 提供)
  */
 export const resolveSnapshotUrl = (snapshotPath: string) => {
   const trimmed = snapshotPath.trim();
@@ -106,5 +110,17 @@ export const resolveSnapshotUrl = (snapshotPath: string) => {
   }
 
   const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const snapshotBase = getSnapshotBase();
+  if (snapshotBase) {
+    return `${snapshotBase}${path}`;
+  }
+
+  // `/api` 是 REST 前缀，不能用来拼静态截图路径，否则会变成 /api/snapshots/... 404
+  const apiBase = getApiBase();
+  if (!apiBase || apiBase === '/api' || apiBase.endsWith('/api')) {
+    const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+    return new URL(path, origin).toString();
+  }
+
   return buildApiUrl(path).toString();
 };

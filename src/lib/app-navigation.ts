@@ -1,5 +1,6 @@
 import type { DeviceType } from '@/types/template';
 import { defaultLadleNav, isLadleNavId, type LadleNavId } from '@/lib/ladle-navigation';
+import { isBenxiSuiteEnabled } from '@/lib/product-mode';
 
 export type LadlePanelMode = 'selector' | 'radar';
 
@@ -11,6 +12,8 @@ export interface AppRouteState {
   ladlePanelMode: LadlePanelMode;
   /** 是否已进入钢包业务壳层 */
   ladleShellActive: boolean;
+  /** 钢包壳层内聚焦的包号（驾驶舱 / 报表跳转雷达详情时携带） */
+  ladleNo?: string | null;
 }
 
 const DEVICE_TYPES: DeviceType[] = [
@@ -28,12 +31,13 @@ function isDeviceType(value: string | null): value is DeviceType {
 }
 
 /** 钢包产品版业务一级菜单路由。 */
-export function createLadleProductRoute(nav: LadleNavId = defaultLadleNav): AppRouteState {
+export function createLadleProductRoute(nav: LadleNavId = defaultLadleNav, ladleNo: string | null = null): AppRouteState {
   return {
     nav,
     deviceType: 'ladle-recognition',
     ladlePanelMode: 'selector',
     ladleShellActive: true,
+    ladleNo,
   };
 }
 
@@ -55,12 +59,10 @@ export function parseAppRoute(search = ''): AppRouteState {
   const navParam = params.get('nav');
 
   if (deviceType === 'ladle-recognition' && ladleParam && isLadleNavId(ladleParam)) {
-    return {
-      nav: ladleParam,
-      deviceType,
-      ladlePanelMode: 'selector',
-      ladleShellActive: true,
-    };
+    return createLadleProductRoute(ladleParam, params.get('no'));
+  }
+  if (deviceType === 'ladle-recognition' && modeParam === 'radar' && isBenxiSuiteEnabled) {
+    return createLadleProductRoute('ladle-radar');
   }
 
   if (deviceType === 'ladle-recognition' && modeParam === 'radar') {
@@ -99,6 +101,7 @@ export function buildAppRouteSearch(state: AppRouteState): string {
   if (state.ladleShellActive && state.deviceType === 'ladle-recognition') {
     params.set('device', 'ladle-recognition');
     params.set('ladle', isLadleNavId(state.nav) ? state.nav : defaultLadleNav);
+    if (state.ladleNo) params.set('no', state.ladleNo);
     return `?${params.toString()}`;
   }
 

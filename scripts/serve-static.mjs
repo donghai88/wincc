@@ -10,6 +10,8 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const root = resolve(process.env.STATIC_ROOT ?? resolve(packageRoot, 'out'));
 const port = Number(process.env.PORT ?? 3001);
 const backendUrl = new URL(process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8080');
+/** 测温截图 Web 路径 /snapshots/... 的上游静态服务，例如 http://192.168.1.109:85 */
+const snapshotUpstream = (process.env.SNAPSHOT_UPSTREAM ?? '').trim().replace(/\/+$/, '');
 const mediaAllowHosts = (process.env.MEDIA_PROXY_ALLOW_HOSTS ?? '')
   .split(',')
   .map((item) => item.trim())
@@ -35,6 +37,7 @@ const mimeTypes = {
   '.webp': 'image/webp',
   '.glb': 'model/gltf-binary',
   '.fbx': 'application/octet-stream',
+  '.pcd': 'application/octet-stream',
 };
 
 if (!existsSync(root)) {
@@ -86,6 +89,53 @@ const proxyHttpRequest = (request, response) => {
   });
 
   request.pipe(backendRequest);
+};
+
+/** 将 /snapshots/... 反代到 SNAPSHOT_UPSTREAM（静态图服务），便于打包后运行时配置、无需重编前端 */
+const proxySnapshotRequest = (request, response) => {
+  if (!snapshotUpstream) {
+    response.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('SNAPSHOT_UPSTREAM is not configured');
+    return;
+  }
+
+  let upstream;
+  try {
+    upstream = new URL(snapshotUpstream);
+  } catch {
+    response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Invalid SNAPSHOT_UPSTREAM');
+    return;
+  }
+
+  const { pathname, search } = new URL(request.url ?? '/', 'http://localhost');
+  const isHttps = upstream.protocol === 'https:';
+  const transport = isHttps ? https : http;
+  const upstreamRequest = transport.request({
+    hostname: upstream.hostname,
+    port: upstream.port || (isHttps ? 443 : 80),
+    protocol: upstream.protocol,
+    method: request.method,
+    path: `${pathname}${search}`,
+    headers: {
+      ...request.headers,
+      host: upstream.host,
+    },
+    agent: isHttps ? insecureHttpsAgent : undefined,
+  }, (upstreamResponse) => {
+    response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+    upstreamResponse.pipe(response);
+  });
+
+  upstreamRequest.on('error', (error) => {
+    console.error(`[snapshot-proxy] ${request.method} ${request.url} -> ${error.message}`);
+    if (!response.headersSent) {
+      response.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    response.end('Bad Gateway');
+  });
+
+  request.pipe(upstreamRequest);
 };
 
 const isPrivateOrLocalHostname = (hostname) => {
@@ -261,6 +311,15 @@ const server = createServer((request, response) => {
     return;
   }
 
+  if (pathname.startsWith('/snapshots/') || pathname === '/snapshots') {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      response.writeHead(405, { Allow: 'GET, HEAD' }).end();
+      return;
+    }
+    proxySnapshotRequest(request, response);
+    return;
+  }
+
   if (pathname.startsWith('/api/media/')) {
     response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
     response.end('Upgrade Required');
@@ -373,7 +432,9 @@ server.on('upgrade', (request, socket, head) => {
 server.listen(port, '0.0.0.0', () => {
   console.log(`演示服务已启动：http://127.0.0.1:${port}`);
   console.log(`接口代理目标：${backendUrl.origin}`);
+  console.log(`截图静态上游：${snapshotUpstream || '(未配置 SNAPSHOT_UPSTREAM，/snapshots 将 502)'}`);
   console.log(`截图目录白名单：${snapshotAllowRoots.join(' | ') || '(empty)'}`);
   console.log('FLV 并发中转：ws(s)://<host>/api/media/flv-ws?target=<http-flv-url>');
   console.log('本地截图代理：/api/media/snapshot?path=<windows-absolute-path>');
+  console.log('Web 截图反代：/snapshots/* → SNAPSHOT_UPSTREAM');
 });

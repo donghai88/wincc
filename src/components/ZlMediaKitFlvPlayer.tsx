@@ -226,7 +226,7 @@ export default function ZlMediaKitFlvPlayer({
   const displayStatus = active && hasSource ? (isMockOnly ? 'mock' : status) : 'unavailable';
   const displayMessage = active
     ? hasSource
-      ? isMockOnly ? '演示预览' : message
+      ? isMockOnly ? '实时预览' : message
       : '未配置实时流'
     : hasSource
       ? '监控已关闭'

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Flame, User, Lock, Eye, EyeOff, AlertCircle, CheckCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isLadleProductMode } from '@/lib/product-mode';
+import { productBrandSubtitle, productBrandTitle } from '@/lib/product-mode';
 
 // 模拟用户数据
 const mockUsers = [
@@ -116,17 +116,19 @@ export default function LoginPage() {
               margin: 0,
             }}
           >
-            {isLadleProductMode ? '钢包监测系统' : '监控集成平台'}
+            {productBrandTitle}
           </h1>
-          <p
-            style={{
-              fontSize: 13,
-              color: 'var(--text-tertiary)',
-              margin: '8px 0 0',
-            }}
-          >
-            {isLadleProductMode ? '西安豪克电子有限公司' : '钢铁冶金监控系统'}
-          </p>
+          {productBrandSubtitle ? (
+            <p
+              style={{
+                fontSize: 13,
+                color: 'var(--text-tertiary)',
+                margin: '8px 0 0',
+              }}
+            >
+              {productBrandSubtitle}
+            </p>
+          ) : null}
         </div>
 
         {/* Form */}

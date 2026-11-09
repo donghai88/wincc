@@ -1,5 +1,6 @@
-# 铁水沟生产运行时：Node 静态服务 + /api|/ws 反向代理 + /api/media/flv-ws 并发中转
-# 纯 Nginx 镜像无法提供 FLV WebSocket 中继，16 路热成像必须用本镜像。
+# 钢包/铁水沟生产运行时：Node 静态服务 + /api|/ws 反向代理
+# + /snapshots → SNAPSHOT_UPSTREAM 反代 + /api/media/snapshot 本地读图
+# + /api/media/flv-ws 并发中转（纯 Nginx 无法提供 FLV WebSocket 中继）
 FROM node:22-alpine
 
 WORKDIR /app
@@ -12,6 +13,10 @@ COPY scripts/serve-static.mjs ./scripts/serve-static.mjs
 
 ENV PORT=8080
 ENV API_PROXY_TARGET=http://host.docker.internal:8080
+# 测温截图 Web 路径 /snapshots/... 的静态服务（docker run -e 可覆盖，无需重打 tar）
+ENV SNAPSHOT_UPSTREAM=http://192.168.1.109:85
+# Windows 绝对路径截图白名单（容器内一般用不上；Node 直跑部署时更有用）
+ENV SNAPSHOT_ALLOW_ROOTS=D:\data\ladle
 # 可选：限制可代理的媒体机主机名，逗号分隔。未设置时允许私网地址。
 # ENV MEDIA_PROXY_ALLOW_HOSTS=192.168.1.12
 
