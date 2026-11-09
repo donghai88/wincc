@@ -12,6 +12,7 @@ import type {
   LadleModbusPayload,
   LadlePagedRows,
   LadleRecordDetail,
+  LadleMonitorExportQuery,
   LadleRecordExportQuery,
   LadleRecordListQuery,
   LadleRecordRow,
@@ -359,6 +360,16 @@ export function buildLadleRecordDownloadPath(query: LadleRecordExportQuery) {
   return `/ladle-record/download?${params.toString()}`;
 }
 
+/** 新 Excel 导出。只带包号和时间，不替代 /ladle-record/download。 */
+export function buildLadleRecordExportPath(query: LadleMonitorExportQuery) {
+  const params = new URLSearchParams();
+  if (query.ladleNo) params.set('ladleNo', query.ladleNo);
+  if (query.startTime) params.set('startTime', query.startTime);
+  if (query.endTime) params.set('endTime', query.endTime);
+  const search = params.toString();
+  return search ? `/ladle-record/export?${search}` : '/ladle-record/export';
+}
+
 export function buildLadleRecordListPath(query: LadleRecordListQuery) {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -578,6 +589,60 @@ export function bumpInferenceCount() {
 
 export function getMockLadleNos() {
   return mockLadleStore.map((item) => item.ladleNo);
+}
+
+const monitorZones = [
+  { label: '南一', pattern: /南\s*1|南一/ },
+  { label: '南二', pattern: /南\s*2|南二/ },
+  { label: '北一', pattern: /北\s*1|北一/ },
+  { label: '北二', pattern: /北\s*2|北二/ },
+] as const;
+
+/** 文档约定：只写日期时，开始补 00:00:00，结束补 23:59:59。真实接口由服务端补齐。 */
+function normalizeMonitorExportTime(value: string | undefined, bound: 'start' | 'end') {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return bound === 'start' ? `${trimmed} 00:00:00` : `${trimmed} 23:59:59`;
+  }
+  return trimmed;
+}
+
+export function exportLadleMonitorSheetCsv(query: LadleMonitorExportQuery) {
+  const startTime = normalizeMonitorExportTime(query.startTime, 'start');
+  const endTime = normalizeMonitorExportTime(query.endTime, 'end');
+  const filtered = mockRecordStore.filter((record) => {
+    if (query.ladleNo && record.ladleNo !== query.ladleNo) return false;
+    if (startTime && record.recordTime < startTime) return false;
+    if (endTime && record.recordTime > endTime) return false;
+    return true;
+  });
+
+  const groups = new Map<string, LadleRecordDetail[]>();
+  filtered.forEach((record) => {
+    const key = `${record.ladleNo}::${record.recordTime}`;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(record);
+    groups.set(key, bucket);
+  });
+
+  const rows = Array.from(groups.values()).sort((left, right) => (
+    left[0].recordTime.localeCompare(right[0].recordTime) || left[0].ladleNo.localeCompare(right[0].ladleNo)
+  ));
+  const seenByLadle = new Map<string, number>();
+  const header = ['包号', '监测时间', '监测次数', ...monitorZones.map((zone) => zone.label)];
+  const lines = rows.map((items) => {
+    const ladleNo = items[0].ladleNo;
+    const count = (seenByLadle.get(ladleNo) ?? 0) + 1;
+    seenByLadle.set(ladleNo, count);
+    const zoneTemps = monitorZones.map((zone) => {
+      const match = items.find((item) => zone.pattern.test(item.deviceName));
+      return match?.maxTemp ?? '';
+    });
+    return [ladleNo, items[0].recordTime, count, ...zoneTemps].join(',');
+  });
+
+  return [header.join(','), ...lines].join('\n');
 }
 
 export function exportLadleRecordsCsv(query: LadleRecordExportQuery) {

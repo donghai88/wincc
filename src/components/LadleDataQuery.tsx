@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { Download, Eye, RefreshCw, Search } from 'lucide-react';
 import {
   buildLadleRecordDownloadPath,
+  buildLadleRecordExportPath,
   buildLadleRecordListPath,
+  exportLadleMonitorSheetCsv,
   exportLadleRecordsCsv,
   formatLadleDateTime,
   getMockLadleNos,
@@ -158,23 +160,42 @@ export default function LadleDataQuery() {
     }
   };
 
+  const downloadCsv = (csv: string, filename: string) => {
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const exportData = () => {
     const { pageNum: _pageNum, pageSize: _pageSize, ...exportQuery } = applied;
     if (isMockOnly || canUseMockData) {
-      const csv = exportLadleRecordsCsv(exportQuery);
-      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `ladle-records-${Date.now()}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      downloadCsv(exportLadleRecordsCsv(exportQuery), `ladle-records-${Date.now()}.csv`);
       setMessage('已导出 CSV 文件');
       return;
     }
 
     window.open(buildApiUrl(buildLadleRecordDownloadPath(exportQuery)).toString(), '_blank');
     setMessage('已触发服务端导出');
+  };
+
+  const exportMonitorSheet = () => {
+    const query = {
+      ladleNo: applied.ladleNo?.trim() || undefined,
+      startTime: applied.startTime?.trim() || undefined,
+      endTime: applied.endTime?.trim() || undefined,
+    };
+    if (isMockOnly || canUseMockData) {
+      downloadCsv(exportLadleMonitorSheetCsv(query), `温度监测记录-${Date.now()}.csv`);
+      setMessage('已导出温度监测记录');
+      return;
+    }
+
+    window.open(buildApiUrl(buildLadleRecordExportPath(query)).toString(), '_blank');
+    setMessage('已触发温度监测记录导出');
   };
 
   const totalPages = Math.max(1, Math.ceil(total / (applied.pageSize ?? 10)));
@@ -185,11 +206,16 @@ export default function LadleDataQuery() {
         <div>
           <span className={styles.eyebrow}><Search size={14} aria-hidden="true" /> 历史温度数据</span>
           <h2>数据查询</h2>
-          <p>按钢包号、设备与时间范围检索聚合温度记录，并支持导出与查看原始热成像数据。</p>
+          <p>按钢包号、设备与时间范围检索记录。导出数据沿用原下载；导出监测记录按钢包和时间生成温度监测表。</p>
         </div>
-        <button type="button" className={styles.primaryButton} onClick={exportData}>
-          <Download size={16} aria-hidden="true" /> 导出数据
-        </button>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.primaryButton} onClick={exportData} title="按当前筛选条件导出原有记录">
+            <Download size={16} aria-hidden="true" /> 导出数据
+          </button>
+          <button type="button" className={styles.primaryButton} onClick={exportMonitorSheet} title="按当前钢包号和时间范围导出温度监测记录表">
+            <Download size={16} aria-hidden="true" /> 导出监测记录
+          </button>
+        </div>
       </header>
 
       {message && <div className={styles.notice} role="status">{message}</div>}

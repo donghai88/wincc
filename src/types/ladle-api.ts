@@ -56,6 +56,13 @@ export interface LadleRecordListQuery {
 
 export type LadleRecordExportQuery = Omit<LadleRecordListQuery, 'pageNum' | 'pageSize'>;
 
+/** GET /ladle-record/export：钢包号可不填，填写时只能一个；时间为空则由服务端处理。 */
+export interface LadleMonitorExportQuery {
+  ladleNo?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
 export interface LadleChartPoint {
   ladleNo: string;
   maxTemp: number;

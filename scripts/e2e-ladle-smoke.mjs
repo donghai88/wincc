@@ -127,6 +127,16 @@ try {
     record('数据查询 · 导出', 'passed', '导出反馈已出现');
   }
 
+  const monitorDownloadPromise = page.waitForEvent('download', { timeout: timeoutMs }).catch(() => null);
+  await page.getByRole('button', { name: '导出监测记录', exact: true }).click();
+  const monitorDownload = await monitorDownloadPromise;
+  if (monitorDownload) {
+    record('数据查询 · 监测记录导出', 'passed', `下载文件 ${monitorDownload.suggestedFilename()}`);
+  } else {
+    await page.getByText(/已导出温度监测记录|已触发温度监测记录导出/).first().waitFor({ timeout: timeoutMs });
+    record('数据查询 · 监测记录导出', 'passed', '监测记录导出反馈已出现');
+  }
+
   // 4) 曲线分析
   if (expectApi) {
     await waitForResponse(page, '曲线分析接口', '/ladle-chart/list', () => openNav(page, '曲线分析', '钢包曲线分析'));
