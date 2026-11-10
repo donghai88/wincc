@@ -435,7 +435,6 @@ export default function LadleManagement() {
               </dl>
               <section className={styles.plan}>
                 <div><CalendarClock size={17} aria-hidden="true" /><h4>档案操作</h4></div>
-                <p>支持 PUT /ladle 更新与 DELETE /ladle/{'{ids}'} 删除。</p>
                 <div className={styles.filters}>
                   <button type="button" onClick={startEdit}><Wrench size={15} aria-hidden="true" /> 编辑档案</button>
                   <button type="button" onClick={() => void removeSelected()}><Trash2 size={15} aria-hidden="true" /> 删除档案</button>

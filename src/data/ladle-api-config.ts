@@ -352,29 +352,33 @@ export function queryLadleRecordDetail(ladleNo: string, recordTime: string): Lad
   return createSuccess(data.map((record) => ({ ...record })));
 }
 
-export function buildLadleRecordDownloadPath(query: LadleRecordExportQuery) {
-  const params = new URLSearchParams();
+function appendLadleRecordParams(params: URLSearchParams, query: object) {
   Object.entries(query).forEach(([key, value]) => {
+    if (value === null) {
+      params.set(key, 'null');
+      return;
+    }
     if (value !== undefined && value !== '') params.set(key, String(value));
   });
+}
+
+export function buildLadleRecordDownloadPath(query: LadleRecordExportQuery) {
+  const params = new URLSearchParams();
+  appendLadleRecordParams(params, query);
   return `/ladle-record/download?${params.toString()}`;
 }
 
-/** 新 Excel 导出。只带包号和时间，不替代 /ladle-record/download。 */
+/** 新 Excel 导出。只带包号和时间，不替代 /ladle-record/download。全部钢包时 ladleNo=null。 */
 export function buildLadleRecordExportPath(query: LadleMonitorExportQuery) {
   const params = new URLSearchParams();
-  if (query.ladleNo) params.set('ladleNo', query.ladleNo);
-  if (query.startTime) params.set('startTime', query.startTime);
-  if (query.endTime) params.set('endTime', query.endTime);
+  appendLadleRecordParams(params, query);
   const search = params.toString();
   return search ? `/ladle-record/export?${search}` : '/ladle-record/export';
 }
 
 export function buildLadleRecordListPath(query: LadleRecordListQuery) {
   const params = new URLSearchParams();
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') params.set(key, String(value));
-  });
+  appendLadleRecordParams(params, query);
   return `/ladle-record/list?${params.toString()}`;
 }
 

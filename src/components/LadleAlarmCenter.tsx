@@ -177,11 +177,10 @@ export default function LadleAlarmCenter() {
 
       {message && <div className={styles.notice} role="status">{message}</div>}
 
-      <div className={styles.summary}>
+      <div className={`${styles.summary} ${styles.summaryThree}`}>
         <div><span>查询结果</span><b>{total}</b><em>{status === 'loading' ? '加载中' : '当前筛选总数'}</em></div>
         <div><span>本页未读</span><b className={styles.warning}>{unreadCount}</b><em>待处理记录</em></div>
         <div><span>已选</span><b>{selectedIds.length}</b><em>批量处理</em></div>
-        <div><span>数据源</span><b>{status === 'fallback' ? '备用' : 'API'}</b><em>ladleNo 维度</em></div>
       </div>
 
       <section className={styles.registry}>

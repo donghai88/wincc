@@ -43,7 +43,8 @@ export interface LadleRecordDetail extends Omit<LadleRecordRow, 'id'> {
 }
 
 export interface LadleRecordListQuery {
-  ladleNo?: string;
+  /** 全部钢包时传 null，服务端按 ladleNo=null 查询 */
+  ladleNo?: string | null;
   deviceNameList?: string;
   maxTemp?: number;
   minTemp?: number;
@@ -58,7 +59,8 @@ export type LadleRecordExportQuery = Omit<LadleRecordListQuery, 'pageNum' | 'pag
 
 /** GET /ladle-record/export：钢包号可不填，填写时只能一个；时间为空则由服务端处理。 */
 export interface LadleMonitorExportQuery {
-  ladleNo?: string;
+  /** 全部钢包时传 null */
+  ladleNo?: string | null;
   startTime?: string;
   endTime?: string;
 }

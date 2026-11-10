@@ -110,18 +110,19 @@ export default function LadleDataQuery() {
 
   useEffect(() => {
     if (!ladleOptions.length) return;
-    if (!draft.ladleNo || !ladleOptions.includes(draft.ladleNo)) {
-      const nextLadleNo = ladleOptions[0];
-      setDraft((current) => ({ ...current, ladleNo: nextLadleNo }));
-      setApplied((current) => (
-        current.ladleNo === nextLadleNo ? current : { ...current, ladleNo: nextLadleNo, pageNum: 1 }
-      ));
-    }
+    const keep = (ladleNo: string | null | undefined) => (
+      ladleNo === null || (typeof ladleNo === 'string' && ladleNo !== '' && ladleOptions.includes(ladleNo))
+    );
+    setDraft((current) => (keep(current.ladleNo) ? current : { ...current, ladleNo: ladleOptions[0] }));
+    setApplied((current) => (
+      keep(current.ladleNo) ? current : { ...current, ladleNo: ladleOptions[0], pageNum: 1 }
+    ));
   }, [ladleOptions]);
 
   const submitQuery = () => {
     setApplied({
       ...draft,
+      ladleNo: draft.ladleNo?.trim() ? draft.ladleNo.trim() : null,
       deviceNameList: draft.deviceNameList?.trim() || undefined,
       pageNum: 1,
     });
@@ -184,7 +185,7 @@ export default function LadleDataQuery() {
 
   const exportMonitorSheet = () => {
     const query = {
-      ladleNo: applied.ladleNo?.trim() || undefined,
+      ladleNo: applied.ladleNo?.trim() ? applied.ladleNo.trim() : null,
       startTime: applied.startTime?.trim() || undefined,
       endTime: applied.endTime?.trim() || undefined,
     };
@@ -230,8 +231,12 @@ export default function LadleDataQuery() {
             钢包号
             <select
               value={draft.ladleNo ?? ''}
-              onChange={(event) => setDraft((current) => ({ ...current, ladleNo: event.target.value }))}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                ladleNo: event.target.value === '' ? null : event.target.value,
+              }))}
             >
+              <option value="">全部</option>
               {ladleOptions.map((ladleNo) => <option key={ladleNo} value={ladleNo}>{ladleNo}</option>)}
             </select>
           </label>
